@@ -26,7 +26,9 @@ const AuthPage: React.FC = () => {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupRole, setSignupRole] = useState<UserRole>('STUDENT');
+  const [signupGuestDuration, setSignupGuestDuration] = useState('24');
   const [signupError, setSignupError] = useState('');
+  const [guestSuccessMsg, setGuestSuccessMsg] = useState('');
 
   if (isAuthenticated && user) {
     const dest = ROLE_REDIRECTS[user.role] || '/student';
@@ -38,7 +40,6 @@ const AuthPage: React.FC = () => {
     setLoginError('');
     try {
       await login(loginEmail, loginPassword);
-      // after login, user state will update and the redirect above fires
     } catch {
       setLoginError('Invalid email or password. Try the demo credentials below.');
     }
@@ -47,6 +48,13 @@ const AuthPage: React.FC = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignupError('');
+    setGuestSuccessMsg('');
+
+    if (signupRole === 'GUEST') {
+      setGuestSuccessMsg(`Guest access request for ${signupGuestDuration} hours has been sent to the Admin!`);
+      return;
+    }
+
     try {
       await signup(signupName, signupEmail, signupPassword, signupRole);
     } catch {
@@ -73,7 +81,10 @@ const AuthPage: React.FC = () => {
 
             <input type="text" placeholder="Name" value={signupName} onChange={(e) => setSignupName(e.target.value)} id="signup-name-input" />
             <input type="email" placeholder="Email" value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} id="signup-email-input" />
-            <input type="password" placeholder="Password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} id="signup-password-input" />
+            
+            {signupRole !== 'GUEST' && (
+              <input type="password" placeholder="Password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} id="signup-password-input" />
+            )}
 
             {/* Role dropdown */}
             <div className="auth-select-wrapper">
@@ -91,9 +102,24 @@ const AuthPage: React.FC = () => {
               <span className="auth-select-arrow">▾</span>
             </div>
 
-            {signupError && <span className="auth-error">{signupError}</span>}
+            {signupRole === 'GUEST' && (
+              <input 
+                type="number" 
+                placeholder="Requested Session Duration (Hours)" 
+                value={signupGuestDuration} 
+                onChange={(e) => setSignupGuestDuration(e.target.value)} 
+                min="1" 
+                max="720"
+                style={{ marginTop: '-4px' }}
+              />
+            )}
 
-            <button type="submit" className="auth-btn" id="signup-submit-btn">SIGN UP</button>
+            {signupError && <span className="auth-error">{signupError}</span>}
+            {guestSuccessMsg && <span className="auth-error" style={{ color: '#38a169', background: 'rgba(56,161,105,0.1)' }}>{guestSuccessMsg}</span>}
+
+            <button type="submit" className="auth-btn" id="signup-submit-btn">
+              {signupRole === 'GUEST' ? 'REQUEST ACCESS' : 'SIGN UP'}
+            </button>
           </form>
         </div>
 
