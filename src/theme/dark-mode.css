@@ -1,0 +1,185 @@
+/* ============================================
+   Navy Blue Dark Mode Overrides
+   ============================================ */
+
+body.dark-mode {
+  background: #060b19;
+  color: #e2e8f0;
+}
+
+/* ---------- Auth Page ---------- */
+body.dark-mode .auth-page {
+  background: radial-gradient(circle at center, #0a192f 0%, #020617 100%);
+}
+
+body.dark-mode .auth-container {
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 60px rgba(106, 60, 176, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: #0f172a;
+}
+
+body.dark-mode .auth-toggle-panel {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #1e1b4b 100%);
+}
+
+body.dark-mode img[alt="QueryMe Logo"] {
+  filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.25)) drop-shadow(0 0 40px rgba(255, 255, 255, 0.1));
+}
+
+body.dark-mode .auth-form-container {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+body.dark-mode .auth-title {
+  color: #f8fafc;
+}
+
+body.dark-mode .auth-form-container input {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+body.dark-mode .auth-form-container input::placeholder {
+  color: #64748b;
+}
+
+body.dark-mode .auth-select {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+body.dark-mode .auth-demo-label {
+  color: #94a3b8;
+}
+
+/* ---------- Dashboard Layout ---------- */
+body.dark-mode .dash-layout {
+  background: #060b19;
+}
+
+body.dark-mode .dash-sidebar,
+body.dark-mode .dash-navbar,
+body.dark-mode .dash-sidebar-header,
+body.dark-mode .dash-sidebar-footer {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+body.dark-mode .dash-logo-text,
+body.dark-mode .dash-user-name,
+body.dark-mode .page-header h1,
+body.dark-mode .stat-card-value,
+body.dark-mode .content-card-header h2 {
+  color: #f8fafc;
+}
+
+body.dark-mode .dash-sidebar-toggle {
+  background: #1e293b;
+  color: #94a3b8;
+}
+
+body.dark-mode .dash-sidebar-toggle:hover {
+  background: #334155;
+  color: #f8fafc;
+}
+
+body.dark-mode .dash-nav-item {
+  color: #94a3b8;
+}
+
+body.dark-mode .dash-nav-item:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+body.dark-mode .stat-card,
+body.dark-mode .content-card,
+body.dark-mode .exam-question-card,
+body.dark-mode .exam-results-card,
+body.dark-mode .exam-question-nav {
+  background: #0f172a;
+  border-color: #1e293b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .content-card-header,
+body.dark-mode .exam-header,
+body.dark-mode .exam-results-header,
+body.dark-mode .data-table th {
+  background: #0f172a;
+  border-bottom-color: #1e293b;
+  color: #e2e8f0;
+}
+
+body.dark-mode .data-table td {
+  border-bottom-color: #1e293b;
+  color: #cbd5e1;
+}
+
+body.dark-mode .data-table tr:hover td {
+  background: #1e293b;
+}
+
+body.dark-mode .page-header p,
+body.dark-mode .stat-card-label {
+  color: #94a3b8;
+}
+
+body.dark-mode .dash-navbar-search {
+  background: #1e293b;
+}
+
+body.dark-mode .dash-navbar-search input {
+  color: #f8fafc;
+}
+
+body.dark-mode .dash-navbar-search input::placeholder {
+  color: #64748b;
+}
+
+body.dark-mode .dash-logout-btn {
+  background: rgba(229, 62, 62, 0.1);
+}
+
+body.dark-mode .dash-logout-btn:hover {
+  background: rgba(229, 62, 62, 0.2);
+}
+
+body.dark-mode .empty-state h3 {
+  color: #f8fafc;
+}
+
+body.dark-mode .empty-state p {
+  color: #94a3b8;
+}
+
+/* Exam Session Overrides */
+body.dark-mode .exam-header {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+body.dark-mode .exam-title {
+  color: #f8fafc;
+}
+
+body.dark-mode .exam-qnav-btn {
+  background: #0f172a;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+body.dark-mode .exam-qnav-btn:hover {
+  background: #1e293b;
+}
+
+body.dark-mode .exam-editor-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-mode .exam-results-empty svg {
+  stroke: #334155;
+}
