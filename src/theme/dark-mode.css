@@ -157,12 +157,24 @@ body.dark-mode .empty-state p {
 }
 
 /* Exam Session Overrides */
+body.dark-mode .exam-workspace {
+  background: #060b19;
+}
+
 body.dark-mode .exam-header {
   background: #0f172a;
   border-color: #1e293b;
 }
 
 body.dark-mode .exam-title {
+  color: #f8fafc;
+}
+
+body.dark-mode .exam-meta {
+  color: #94a3b8;
+}
+
+body.dark-mode .exam-qnav-title {
   color: #f8fafc;
 }
 
@@ -174,12 +186,170 @@ body.dark-mode .exam-qnav-btn {
 
 body.dark-mode .exam-qnav-btn:hover {
   background: #1e293b;
+  border-color: #6a3cb0;
+  color: #f8fafc;
+}
+
+body.dark-mode .exam-qnav-btn.current {
+  background: #6a3cb0;
+  border-color: #6a3cb0;
+  color: #fff;
+}
+
+body.dark-mode .exam-qnav-btn.answered {
+  background: rgba(49, 130, 206, 0.15);
+  border-color: #3182ce;
+  color: #63b3ed;
+}
+
+body.dark-mode .exam-qnav-btn.submitted {
+  background: rgba(56, 161, 105, 0.15);
+  border-color: #38a169;
+  color: #68d391;
+}
+
+body.dark-mode .exam-question-text {
+  color: #f8fafc;
 }
 
 body.dark-mode .exam-editor-card {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+body.dark-mode .exam-results-header {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+body.dark-mode .exam-results-table th {
+  background: #0f172a;
+  border-color: #1e293b;
+  color: #94a3b8;
+}
+
+body.dark-mode .exam-results-table td {
+  border-color: #1e293b;
+  color: #e2e8f0;
+}
+
+body.dark-mode .exam-results-table tr:hover td {
+  background: #1e293b;
+}
+
 body.dark-mode .exam-results-empty svg {
   stroke: #334155;
+}
+
+body.dark-mode .exam-modal {
+  background: #0f172a !important;
+  color: #f8fafc;
+}
+
+body.dark-mode .exam-modal h3 {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .exam-modal p {
+  color: #94a3b8;
+}
+
+/* Secondary Button Fixes */
+body.dark-mode .btn-secondary {
+  background: #1e293b;
+  color: #94a3b8;
+}
+
+body.dark-mode .btn-secondary:hover {
+  background: #334155;
+  color: #f8fafc;
+}
+
+/* Inline Style Overrides (Targeting Elements in Content Cards) */
+/* Text Colors */
+body.dark-mode .content-card h3,
+body.dark-mode .content-card-body h3 {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .content-card p,
+body.dark-mode .content-card-body p {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .content-card strong,
+body.dark-mode .content-card-body strong {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode .content-card-body span {
+  color: #94a3b8;
+}
+
+/* Don't override badge texts */
+body.dark-mode .content-card-body span.badge {
+  color: inherit; /* They specify their own color via class */
+}
+
+/* Profile inputs and table expansions */
+body.dark-mode .content-card-body > div > div > div[style*="border-radius"],
+body.dark-mode .content-card-body > div > div > div > div {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+/* Borders in content cards */
+body.dark-mode .content-card-body > div {
+  border-color: #1e293b !important;
+}
+
+/* Table overrides */
+body.dark-mode table td > div:first-child,
+body.dark-mode table.data-table td > div {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode table td > div:last-child {
+  color: #94a3b8 !important;
+}
+
+/* My Results specific expanded row */
+body.dark-mode table td[colspan="6"] {
+  background-color: #0f172a !important;
+}
+
+body.dark-mode table td[colspan="6"] > div > div {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+body.dark-mode table td[colspan="6"] strong {
+  color: #f8fafc !important;
+}
+
+/* Global Form Element Overrides */
+body.dark-mode .form-input {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+body.dark-mode .form-input:focus {
+  border-color: #c084fc !important;
+  box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.2) !important;
+}
+
+body.dark-mode .form-input::placeholder {
+  color: #64748b !important;
+}
+
+/* System Settings specific overrides */
+body.dark-mode .sandbox-panel,
+body.dark-mode .metric-box {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+body.dark-mode .progress-bg {
+  background-color: #334155 !important;
 }
