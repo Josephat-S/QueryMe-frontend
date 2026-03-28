@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useToast } from '../../components/ToastProvider';
 
 const SystemSettings: React.FC = () => {
+  const { showToast, confirm } = useToast();
   const [cleanSandboxes, setCleanSandboxes] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
 
@@ -10,10 +12,35 @@ const SystemSettings: React.FC = () => {
     { id: 103, title: 'Window Functions Quiz', course: 'Advanced SQL Masters', status: 'Draft', submissions: 0 },
   ]);
 
-  const handleDeleteExam = (id: number) => {
-    if (window.confirm('Are you sure you want to permanently delete this exam? All associated sandbox schemas and student results will be destroyed.')) {
+  const handleDeleteExam = async (id: number, title: string) => {
+    const ok = await confirm({
+      title: 'Delete Exam',
+      message: `Permanently delete "${title}"? All associated sandbox schemas and student results will be destroyed.`,
+      confirmLabel: 'Delete Exam',
+      danger: true,
+    });
+    if (ok) {
       setActiveExams(activeExams.filter(exam => exam.id !== id));
+      showToast('success', 'Exam Deleted', `"${title}" and its data have been removed.`);
     }
+  };
+
+  const handleCleanSandboxes = () => {
+    setCleanSandboxes(true);
+    setTimeout(() => {
+      setCleanSandboxes(false);
+      showToast('success', 'Cleanup Complete', '2 zombie schemas were successfully dropped.');
+    }, 1500);
+  };
+
+  const handleDestroyAll = async () => {
+    const ok = await confirm({
+      title: 'Destroy ALL Sandboxes',
+      message: 'This will immediately drop all active postgres schemas, interrupting any live exams. This action cannot be undone.',
+      confirmLabel: 'Destroy All',
+      danger: true,
+    });
+    if (ok) showToast('error', 'All Sandboxes Destroyed', 'Every active schema has been dropped from the database.');
   };
 
   return (
@@ -50,11 +77,11 @@ const SystemSettings: React.FC = () => {
                <button 
                   className="btn btn-secondary" 
                   style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={() => { setCleanSandboxes(true); setTimeout(() => setCleanSandboxes(false), 1500); }}
+                  onClick={handleCleanSandboxes}
                >
                  {cleanSandboxes ? '⏳ Forcing Cleanup...' : '🧹 Force Cleanup Zombie Sandboxes'}
                </button>
-               <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', color: '#e53e3e', border: '1px solid rgba(229,62,62,0.2)' }}>
+               <button className="btn btn-secondary" onClick={handleDestroyAll} style={{ width: '100%', justifyContent: 'center', color: '#e53e3e', border: '1px solid rgba(229,62,62,0.2)' }}>
                  🔥 Destroy ALL Active Sandboxes (Emergency)
                </button>
                <p style={{ fontSize: '11px', textAlign: 'center', margin: 0 }}>
@@ -138,7 +165,7 @@ const SystemSettings: React.FC = () => {
                     <td>
                       <button 
                         className="btn btn-sm" 
-                        onClick={() => handleDeleteExam(exam.id)}
+                        onClick={() => handleDeleteExam(exam.id, exam.title)}
                         style={{ color: '#e53e3e', background: 'rgba(229, 62, 62, 0.1)', border: 'none' }}
                       >
                         Delete Exam

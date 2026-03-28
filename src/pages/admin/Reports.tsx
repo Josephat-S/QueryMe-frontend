@@ -57,7 +57,7 @@ const Reports: React.FC = () => {
                  </tr>
                </thead>
                <tbody>
-                  {courseData.map((r, i) => (
+                  {courseData.map((r) => (
                     <tr key={r.courseId} style={{ background: selectedCourseId === r.courseId ? 'var(--accent-bg)' : 'transparent' }}>
                       <td style={{ fontWeight: 600 }}>{r.name}</td>
                       <td>{r.exams}</td>

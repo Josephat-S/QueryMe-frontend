@@ -12,7 +12,6 @@ interface LogEntry {
 }
 
 let nextId = 7;
-const baseTime = new Date();
 
 const ALL_LOGS: LogEntry[] = [
   { id: 1,  time: '10:45:02 AM', level: 'INFO',  module: 'Auth',        message: 'User teacher1@uni.edu successfully authenticated.' },
