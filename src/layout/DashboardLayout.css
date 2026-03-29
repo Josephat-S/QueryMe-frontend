@@ -612,20 +612,8 @@
 
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
-  .dash-sidebar {
-    width: 72px;
-  }
-
-  .dash-main {
-    margin-left: 72px;
-  }
-
-  .dash-content {
-    padding: 16px;
-  }
-
-  .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
+  .dash-sidebar { width: 72px; }
+  .dash-main { margin-left: 72px; }
+  .dash-content { padding: 16px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
 }

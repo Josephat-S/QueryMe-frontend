@@ -1,6 +1,10 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
+import ExamBuilder from './ExamBuilder';
+import ResultsDashboard from './ResultsDashboard';
+import ExamsList from './ExamsList';
+import TeacherProfile from './TeacherProfile';
 import type { NavItem } from '../../layout/DashboardLayout';
 
 const HomeIcon = () => (
@@ -31,7 +35,7 @@ const StudentsIcon = () => (
 
 const teacherNav: NavItem[] = [
   { label: 'Dashboard', path: '/teacher', icon: <HomeIcon /> },
-  { label: 'My Exams', path: '/teacher/exams', icon: <ExamIcon /> },
+  { label: 'Exams', path: '/teacher/exams', icon: <ExamIcon /> },
   { label: 'Questions', path: '/teacher/questions', icon: <QuestionIcon /> },
   { label: 'Results', path: '/teacher/results', icon: <ResultsIcon /> },
   { label: 'Students', path: '/teacher/students', icon: <StudentsIcon /> },
@@ -41,12 +45,13 @@ const TeacherDashboard: React.FC = () => {
   return (
     <DashboardLayout navItems={teacherNav} portalTitle="Teacher Portal" accentColor="#38a169">
       <Routes>
-        <Route index element={
+        <Route path="/" element={
           <>
             <div className="page-header">
               <h1>Teacher Dashboard</h1>
               <p>Create exams, manage questions, and view student results</p>
             </div>
+
             <div className="stat-grid">
               <div className="stat-card">
                 <div className="stat-card-icon" style={{ background: 'rgba(56, 161, 105, 0.1)' }}>
@@ -77,6 +82,7 @@ const TeacherDashboard: React.FC = () => {
                 <div className="stat-card-label">Avg. Class Score</div>
               </div>
             </div>
+
             <div className="content-card">
               <div className="content-card-body">
                 <div className="empty-state">
@@ -90,7 +96,12 @@ const TeacherDashboard: React.FC = () => {
             </div>
           </>
         } />
-        <Route path="*" element={<Navigate to="/teacher" replace />} />
+        <Route path="/exams" element={<ExamsList />} />
+        <Route path="/exams/builder" element={<ExamBuilder />} />
+        <Route path="/results" element={<ResultsDashboard />} />
+        <Route path="/profile" element={<TeacherProfile />} />
+        <Route path="/questions" element={<div className="page-header"><h1>Question Bank</h1><p>Coming soon...</p></div>} />
+        <Route path="/students" element={<div className="page-header"><h1>Students</h1><p>Coming soon...</p></div>} />
       </Routes>
     </DashboardLayout>
   );

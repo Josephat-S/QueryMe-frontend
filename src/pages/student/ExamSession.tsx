@@ -1,3 +1,4 @@
+/* eslint-disable react-x/no-array-index-key */
 import React, { useState, useEffect, useCallback } from 'react';
 import './ExamSession.css';
 
@@ -26,7 +27,7 @@ const ExamSession: React.FC = () => {
   const [currentQ, setCurrentQ] = useState(0);
   const [sqlCode, setSqlCode] = useState('');
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [submittedQs, setSubmittedQs] = useState<Set<number>>(new Set());
+  const [submittedQs, setSubmittedQs] = useState<Set<number>>(() => new Set());
   const [queryResult, setQueryResult] = useState<string[][] | null>(null);
   const [queryError, setQueryError] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -203,7 +204,7 @@ const ExamSession: React.FC = () => {
             <div className="exam-editor-area">
               <div className="exam-editor-gutter">
                 {sqlCode.split('\n').map((_, i) => (
-                  <div key={i} className="exam-line-num">{i + 1}</div>
+                  <div key={`line-${i}`} className="exam-line-num">{i + 1}</div>
                 ))}
                 {sqlCode.split('\n').length === 0 && <div className="exam-line-num">1</div>}
               </div>
@@ -238,13 +239,13 @@ const ExamSession: React.FC = () => {
                   <table className="exam-results-table">
                     <thead>
                       <tr>
-                        {queryResult[0].map((col, i) => <th key={i}>{col}</th>)}
+                        {queryResult[0].map((col, i) => <th key={`header-${i}`}>{col}</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {queryResult.slice(1).map((row, ri) => (
-                        <tr key={ri}>
-                          {row.map((cell, ci) => <td key={ci}>{cell}</td>)}
+                        <tr key={`row-${ri}`}>
+                          {row.map((cell, ci) => <td key={`cell-${ci}`}>{cell}</td>)}
                         </tr>
                       ))}
                     </tbody>
