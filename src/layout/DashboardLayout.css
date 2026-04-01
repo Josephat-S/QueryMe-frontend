@@ -261,7 +261,7 @@
   flex-direction: column;
 }
 
-.dash-sidebar.collapsed ~ .dash-main {
+.dash-sidebar.collapsed~.dash-main {
   margin-left: 72px;
 }
 
@@ -461,12 +461,35 @@
   text-transform: uppercase;
 }
 
-.badge-purple { background: rgba(106, 60, 176, 0.1); color: #6a3cb0; }
-.badge-green { background: rgba(56, 161, 105, 0.1); color: #38a169; }
-.badge-orange { background: rgba(221, 107, 32, 0.1); color: #dd6b20; }
-.badge-red { background: rgba(229, 62, 62, 0.1); color: #e53e3e; }
-.badge-blue { background: rgba(49, 130, 206, 0.1); color: #3182ce; }
-.badge-gray { background: rgba(113, 128, 150, 0.1); color: #718096; }
+.badge-purple {
+  background: rgba(106, 60, 176, 0.1);
+  color: #6a3cb0;
+}
+
+.badge-green {
+  background: rgba(56, 161, 105, 0.1);
+  color: #38a169;
+}
+
+.badge-orange {
+  background: rgba(221, 107, 32, 0.1);
+  color: #dd6b20;
+}
+
+.badge-red {
+  background: rgba(229, 62, 62, 0.1);
+  color: #e53e3e;
+}
+
+.badge-blue {
+  background: rgba(49, 130, 206, 0.1);
+  color: #3182ce;
+}
+
+.badge-gray {
+  background: rgba(113, 128, 150, 0.1);
+  color: #718096;
+}
 
 /* ---------- Table ---------- */
 .data-table {
@@ -571,49 +594,204 @@
   margin: 0;
 }
 
-/* ---------- Global Form Elements ---------- */
-.form-input {
-  background-color: #ffffff;
-  color: #1a1a2e;
-  border: 1px solid #e8e8ee;
-  border-radius: 8px;
-  padding: 8px 12px;
-  transition: all 0.2s ease;
+/* ============================================
+   RESPONSIVE — Dashboard Layout
+   ============================================ */
+
+/* ── Tablet (≤900px): slim sidebar ── */
+@media (max-width: 900px) {
+  .dash-sidebar {
+    width: 72px;
+  }
+
+  .dash-sidebar.collapsed {
+    width: 72px;
+  }
+
+  .dash-main {
+    margin-left: 72px;
+  }
+
+  .dash-sidebar.collapsed~.dash-main {
+    margin-left: 72px;
+  }
+
+  .dash-portal-label {
+    display: none;
+  }
+
+  .dash-user-info {
+    display: none;
+  }
+
+  .dash-nav-item {
+    justify-content: center;
+    padding: 12px;
+  }
+
+  .dash-nav-item.active::before {
+    display: none;
+  }
+
+  .dash-nav-label {
+    display: none;
+  }
+
+  .dash-logo img {
+    width: 44px !important;
+  }
+
+  .dash-sidebar-toggle {
+    display: none;
+  }
+
+  .dash-logout-btn {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .dash-logout-btn span {
+    display: none;
+  }
+
+  .dash-user-card {
+    justify-content: center;
+  }
+
+  .dash-content {
+    padding: 20px 16px;
+  }
+
+  .dash-navbar {
+    padding: 12px 16px;
+  }
+
+  .dash-navbar-search {
+    width: 200px;
+  }
 }
 
-.form-input::placeholder {
-  color: #94a3b8;
+/* ── Mobile (≤640px): bottom tab bar replaces sidebar ── */
+@media (max-width: 640px) {
+  .dash-layout {
+    flex-direction: column;
+  }
+
+  /* Sidebar becomes a fixed bottom tab bar */
+  .dash-sidebar {
+    width: 100% !important;
+    height: 60px;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-right: none;
+    border-top: 1px solid #e8e8ee;
+    flex-direction: row;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+    z-index: 200;
+  }
+
+  .dash-sidebar-header {
+    display: none;
+  }
+
+  .dash-portal-label {
+    display: none;
+  }
+
+  .dash-nav {
+    flex-direction: row;
+    flex: 1;
+    padding: 0;
+    gap: 0;
+    align-items: stretch;
+    justify-content: space-around;
+    overflow: visible;
+  }
+
+  .dash-nav-item {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 4px;
+    border-radius: 0;
+    font-size: 9px;
+    min-width: 0;
+  }
+
+  .dash-nav-item.active::before {
+    display: none;
+  }
+
+  .dash-nav-label {
+    display: block;
+    font-size: 9px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dash-nav-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .dash-nav-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .dash-sidebar-footer {
+    display: none;
+  }
+
+  /* Main shifts up, leaves room for tab bar */
+  .dash-main {
+    margin-left: 0 !important;
+    margin-bottom: 60px;
+    min-height: calc(100vh - 60px);
+  }
+
+  .dash-content {
+    padding: 12px;
+  }
+
+  /* Navbar */
+  .dash-navbar {
+    padding: 10px 12px;
+  }
+
+  .dash-navbar-search {
+    display: none;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
 }
 
-.form-input:focus {
-  outline: none;
-  border-color: #6a3cb0;
-  box-shadow: 0 0 0 3px rgba(106, 60, 176, 0.15);
+/* ── Extra-small (≤400px) ── */
+@media (max-width: 400px) {
+  .stat-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 14px;
+  }
+
+  .stat-card-value {
+    font-size: 22px;
+  }
 }
 
-.sandbox-panel {
-  background-color: #f5f5fa;
-  border: 1px solid #e8e8ee;
-}
-
-.metric-box {
-  background-color: #f5f5fa;
-  border-radius: 12px;
-  padding: 16px;
-  text-align: center;
-}
-
-.progress-bg {
-  width: 100%;
-  height: 8px;
-  background-color: #e2e8f0;
-  border-radius: 4px;
-}
-
-/* ---------- Responsive ---------- */
-@media (max-width: 768px) {
-  .dash-sidebar { width: 72px; }
-  .dash-main { margin-left: 72px; }
-  .dash-content { padding: 16px; }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+/* Dark mode tab bar */
+body.dark-mode .dash-sidebar {
+  background: #0f172a;
+  border-top-color: #1e293b;
 }
