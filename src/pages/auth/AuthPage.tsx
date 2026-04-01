@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts';
 import type { UserRole } from '../../contexts';
@@ -19,7 +19,17 @@ const AuthPage: React.FC = () => {
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState('');
+
+  // Check for remembered email on mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('rememberedEmail');
+    if (savedEmail) {
+      setLoginEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   // Signup form state
   const [signupName, setSignupName] = useState('');
@@ -40,6 +50,12 @@ const AuthPage: React.FC = () => {
     setLoginError('');
     try {
       await login(loginEmail, loginPassword);
+      // If successful, handle Remember Me
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', loginEmail);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
     } catch {
       setLoginError('Invalid email or password. Try the demo credentials below.');
     }
@@ -136,7 +152,19 @@ const AuthPage: React.FC = () => {
 
             {loginError && <span className="auth-error">{loginError}</span>}
 
-            <a href="#" className="auth-forgot-link" id="forgot-password-link">Forget Your Password?</a>
+            <div className="auth-options-row">
+              <label className="auth-remember-me">
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe} 
+                  onChange={(e) => setRememberMe(e.target.checked)} 
+                  id="remember-me-checkbox"
+                />
+                <span className="checkmark"></span>
+                Remember Me
+              </label>
+              <a href="#" className="auth-forgot-link" id="forgot-password-link">Forget Your Password?</a>
+            </div>
 
             <button type="submit" className="auth-btn" id="signin-submit-btn">SIGN IN</button>
 

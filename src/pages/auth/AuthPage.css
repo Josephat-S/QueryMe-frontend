@@ -161,7 +161,7 @@
 
 .auth-form-container input:focus {
   background: #e8e8e8;
-  box-shadow: 0 0 0 2px rgba(106, 60, 176, 0.2);
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
 }
 
 /* ---------- Role Dropdown (Select) ---------- */
@@ -192,7 +192,7 @@
 
 .auth-select:focus {
   background: #e8e8e8;
-  box-shadow: 0 0 0 2px rgba(106, 60, 176, 0.2);
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
 }
 
 .auth-select-arrow {
@@ -214,17 +214,73 @@
   max-width: 320px;
 }
 
+/* ---------- Remember Me & Forgot Password Row ---------- */
+.auth-options-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  margin: 10px 0;
+}
+
+.auth-remember-me {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+  gap: 6px;
+}
+
+.auth-remember-me input {
+  display: none;
+}
+
+.auth-remember-me .checkmark {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  position: relative;
+  transition: all 0.2s ease;
+  background: #fafafa;
+}
+
+.auth-remember-me input:checked + .checkmark {
+  background: #6a3cb0;
+  border-color: #6a3cb0;
+}
+
+.auth-remember-me .checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 4px;
+  top: 1px;
+  width: 3px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.auth-remember-me input:checked + .checkmark:after {
+  display: block;
+}
+
 /* ---------- Forgot Password Link ---------- */
 .auth-forgot-link {
-  font-size: 12px;
-  color: #555;
+  font-size: 11px;
+  color: #666;
   text-decoration: none;
-  margin: 10px 0 5px;
   transition: color 0.3s;
 }
 
 .auth-forgot-link:hover {
   color: #6a3cb0;
+  text-decoration: underline;
 }
 
 /* ---------- Form Submit Button ---------- */
@@ -235,7 +291,7 @@
   margin-top: 14px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #6a3cb0, #512da8);
+  background: linear-gradient(135deg, #43A047, #2E7D32);
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -247,8 +303,8 @@
 }
 
 .auth-btn:hover {
-  background: linear-gradient(135deg, #7c4dbd, #5e35b1);
-  box-shadow: 0 4px 15px rgba(106, 60, 176, 0.35);
+  background: linear-gradient(135deg, #4CAF50, #388E3C);
+  box-shadow: 0 4px 15px rgba(46, 125, 50, 0.35);
   transform: translateY(-1px);
 }
 
@@ -295,15 +351,15 @@
 }
 
 .auth-demo-btn:hover {
-  border-color: #3f51b5;
-  color: #ffffff;
-  background: linear-gradient(135deg, #3f51b5, #5c6ac4);
+  border-color: #2E7D32;
+  color: #2E7D32;
+  background: rgba(46, 125, 50, 0.05);
 }
 
 .auth-demo-btn--active {
-  border-color: #3f51b5;
-  color: #ffffff;
-  background: linear-gradient(135deg, #4754c7, #6677de);
+  border-color: #2E7D32;
+  color: #2E7D32;
+  background: rgba(46, 125, 50, 0.08);
 }
 
 /* ========== Toggle / Overlay Panel ========== */
@@ -348,7 +404,7 @@
   padding: 0 40px;
   box-sizing: border-box;
   transition: transform 0.6s ease-in-out;
-  background: linear-gradient(135deg, #7b4fb5 0%, #5c32a6 40%, #4a27a0 70%, #3d1d8e 100%);
+  background: linear-gradient(135deg, #4CAF50 0%, #388E3C 40%, #2E7D32 70%, #1B5E20 100%);
 }
 
 .auth-toggle-panel h1 {
