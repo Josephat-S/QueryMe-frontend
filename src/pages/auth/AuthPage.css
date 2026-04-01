@@ -214,17 +214,73 @@
   max-width: 320px;
 }
 
+/* ---------- Remember Me & Forgot Password Row ---------- */
+.auth-options-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  margin: 10px 0;
+}
+
+.auth-remember-me {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+  gap: 6px;
+}
+
+.auth-remember-me input {
+  display: none;
+}
+
+.auth-remember-me .checkmark {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  position: relative;
+  transition: all 0.2s ease;
+  background: #fafafa;
+}
+
+.auth-remember-me input:checked + .checkmark {
+  background: #6a3cb0;
+  border-color: #6a3cb0;
+}
+
+.auth-remember-me .checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 4px;
+  top: 1px;
+  width: 3px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.auth-remember-me input:checked + .checkmark:after {
+  display: block;
+}
+
 /* ---------- Forgot Password Link ---------- */
 .auth-forgot-link {
-  font-size: 12px;
-  color: #555;
+  font-size: 11px;
+  color: #666;
   text-decoration: none;
-  margin: 10px 0 5px;
   transition: color 0.3s;
 }
 
 .auth-forgot-link:hover {
   color: #6a3cb0;
+  text-decoration: underline;
 }
 
 /* ---------- Form Submit Button ---------- */
