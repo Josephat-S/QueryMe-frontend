@@ -161,7 +161,7 @@
 
 .auth-form-container input:focus {
   background: #e8e8e8;
-  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
+  box-shadow: 0 0 0 2px rgba(106, 60, 176, 0.2);
 }
 
 /* ---------- Role Dropdown (Select) ---------- */
@@ -192,7 +192,7 @@
 
 .auth-select:focus {
   background: #e8e8e8;
-  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
+  box-shadow: 0 0 0 2px rgba(106, 60, 176, 0.2);
 }
 
 .auth-select-arrow {
@@ -291,7 +291,7 @@
   margin-top: 14px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #43A047, #2E7D32);
+  background: linear-gradient(135deg, #6a3cb0, #5b32a3);
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -303,8 +303,8 @@
 }
 
 .auth-btn:hover {
-  background: linear-gradient(135deg, #4CAF50, #388E3C);
-  box-shadow: 0 4px 15px rgba(46, 125, 50, 0.35);
+  background: linear-gradient(135deg, #7b4bc4, #6a3cb0);
+  box-shadow: 0 4px 15px rgba(106, 60, 176, 0.35);
   transform: translateY(-1px);
 }
 
@@ -351,15 +351,15 @@
 }
 
 .auth-demo-btn:hover {
-  border-color: #2E7D32;
-  color: #2E7D32;
-  background: rgba(46, 125, 50, 0.05);
+  border-color: #6a3cb0;
+  color: #6a3cb0;
+  background: rgba(106, 60, 176, 0.05);
 }
 
 .auth-demo-btn--active {
-  border-color: #2E7D32;
-  color: #2E7D32;
-  background: rgba(46, 125, 50, 0.08);
+  border-color: #6a3cb0;
+  color: #6a3cb0;
+  background: rgba(106, 60, 176, 0.08);
 }
 
 /* ========== Toggle / Overlay Panel ========== */
@@ -404,7 +404,7 @@
   padding: 0 40px;
   box-sizing: border-box;
   transition: transform 0.6s ease-in-out;
-  background: linear-gradient(135deg, #4CAF50 0%, #388E3C 40%, #2E7D32 70%, #1B5E20 100%);
+  background: linear-gradient(135deg, #6a3cb0 0%, #5b32a3 40%, #4c2a8f 70%, #3d2270 100%);
 }
 
 .auth-toggle-panel h1 {

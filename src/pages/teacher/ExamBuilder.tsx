@@ -1,7 +1,6 @@
 /* eslint-disable react-x/no-array-index-key */
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import alasql from 'alasql';
 import './TeacherPages.css';
 
 // SheetJS is loaded via CDN script in index.html — available as window.XLSX
