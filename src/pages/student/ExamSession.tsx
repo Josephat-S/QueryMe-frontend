@@ -1,9 +1,11 @@
 /* eslint-disable react-x/no-array-index-key */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { examApi, questionApi, sessionApi, queryApi, Exam, ExamSession as ApiSession } from '../../services/api';
 import './ExamSession.css';
 
 interface Question {
-  id: number;
+  id: string;
   number: number;
   prompt: string;
   marks: number;
@@ -11,28 +13,113 @@ interface Question {
   answer?: string;
 }
 
-const mockQuestions: Question[] = [
-  { id: 1, number: 1, prompt: 'Write a SQL query to select all columns from the "employees" table where the salary is greater than 50000.', marks: 10, submitted: false },
-  { id: 2, number: 2, prompt: 'Write a query to find the average salary for each department. Display the department name and average salary, ordered by average salary descending.', marks: 15, submitted: false },
-  { id: 3, number: 3, prompt: 'Write a query using a JOIN to display employee names along with their department names. Only include employees who have a department assigned.', marks: 15, submitted: false },
-  { id: 4, number: 4, prompt: 'Write a subquery to find all employees whose salary is above the company average salary.', marks: 12, submitted: false },
-  { id: 5, number: 5, prompt: 'Create a query that counts the number of employees in each department and only shows departments with more than 5 employees.', marks: 10, submitted: false },
-  { id: 6, number: 6, prompt: 'Write a query to find the top 3 highest-paid employees in each department using window functions.', marks: 18, submitted: false },
-  { id: 7, number: 7, prompt: 'Write an INSERT statement to add a new employee with the following details: name="Jane Doe", department_id=3, salary=65000, hire_date=CURRENT_DATE.', marks: 10, submitted: false },
-  { id: 8, number: 8, prompt: 'Write a query to find employees who were hired in the last 30 days and display their name, hire date, and department.', marks: 10, submitted: false },
-];
-
 const ExamSession: React.FC = () => {
-  const [questions] = useState<Question[]>(mockQuestions);
+  const { examId } = useParams<{ examId: string }>();
+  const navigate = useNavigate();
+  const [exam, setExam] = useState<Exam | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [session, setSession] = useState<ApiSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentQ, setCurrentQ] = useState(0);
   const [sqlCode, setSqlCode] = useState('');
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [submittedQs, setSubmittedQs] = useState<Set<number>>(() => new Set());
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [submittedQs, setSubmittedQs] = useState<Set<string>>(() => new Set());
   const [queryResult, setQueryResult] = useState<string[][] | null>(null);
   const [queryError, setQueryError] = useState('');
   const [isRunning, setIsRunning] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(90 * 60); // 90 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(0);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+
+  // Load exam and start session
+  useEffect(() => {
+    const loadExam = async () => {
+      if (!examId) {
+        setError('Invalid exam ID');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // First check if user is authenticated
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setError('Authentication required. Please log in again.');
+          setLoading(false);
+          return;
+        }
+
+        // Fetch exam details
+        const examData = await examApi.getExam(examId);
+        setExam(examData);
+
+        // Fetch questions
+        const questionsData = await questionApi.getQuestions(examId);
+        const transformedQuestions: Question[] = questionsData.map((q, index) => ({
+          id: q.id,
+          number: index + 1,
+          prompt: q.prompt,
+          marks: q.marks,
+          submitted: false,
+          answer: '',
+        }));
+        setQuestions(transformedQuestions);
+
+        // Start or resume exam session
+        const userStr = localStorage.getItem('queryme_user');
+        const studentId = userStr ? JSON.parse(userStr).id : undefined;
+
+        if (!studentId) {
+          throw new Error('Unable to determine student identity. Please log in again.');
+        }
+
+        const studentSessions = await sessionApi.getSessionsByStudent(studentId);
+        const existingSession = studentSessions.find(s => s.examId === examId);
+
+        const sessionData = existingSession
+          ? existingSession
+          : await sessionApi.startSession(examId, studentId);
+
+        setSession(sessionData);
+
+        // Set timer
+        const timeLimitSeconds = (examData.timeLimit || examData.timeLimitMins || 60) * 60;
+        setTimeLeft(timeLimitSeconds);
+
+        // Load existing answers if session was already started
+        if (sessionData.answers) {
+          setAnswers(sessionData.answers);
+          setSubmittedQs(new Set(Object.keys(sessionData.answers)));
+        }
+
+      } catch (err) {
+        console.error('Exam loading error:', err);
+        let errorMessage = 'Failed to load exam';
+        
+        if (err instanceof Error) {
+          if (err.message.includes('404') || err.message.includes('Not Found')) {
+            errorMessage = 'Exam not found. It may have been deleted or you may not have access.';
+          } else if (err.message.includes('403') || err.message.includes('Forbidden')) {
+            errorMessage = 'You do not have permission to access this exam.';
+          } else if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+            errorMessage = 'Your session has expired. Please log in again.';
+          } else if (err.message.includes('Failed to fetch')) {
+            errorMessage = 'Cannot connect to the server. Please check your internet connection.';
+          } else {
+            errorMessage = err.message;
+          }
+        }
+        
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExam();
+  }, [examId]);
 
   const current = questions[currentQ];
 
@@ -75,62 +162,101 @@ const ExamSession: React.FC = () => {
     setQueryError('');
   }, [current, sqlCode, answers, questions]);
 
-  // Run query (mock)
-  const runQuery = () => {
+  // Run query
+  const runQuery = async () => {
     if (!sqlCode.trim()) {
       setQueryError('Please write a SQL query first.');
       return;
     }
+    if (!examId || !current?.id) return;
+
     setIsRunning(true);
     setQueryError('');
     setQueryResult(null);
 
-    // Simulate query execution
-    setTimeout(() => {
-      const lower = sqlCode.toLowerCase().trim();
-      if (lower.includes('select')) {
-        setQueryResult([
-          ['id', 'name', 'department', 'salary'],
-          ['1', 'John Smith', 'Engineering', '75000'],
-          ['2', 'Jane Doe', 'Marketing', '62000'],
-          ['3', 'Bob Wilson', 'Engineering', '58000'],
-          ['4', 'Alice Brown', 'Sales', '71000'],
-          ['5', 'Charlie Davis', 'Engineering', '82000'],
-        ]);
-      } else if (lower.includes('insert') || lower.includes('update') || lower.includes('delete')) {
-        setQueryResult([['Result'], ['1 row(s) affected']]);
+    try {
+      const result = await queryApi.submitQuery({
+        query: sqlCode,
+        examId,
+        questionId: current.id,
+      });
+
+      if (result.success && result.data) {
+        // Convert data to table format
+        if (Array.isArray(result.data) && result.data.length > 0) {
+          const headers = Object.keys(result.data[0]);
+          const rows = result.data.map(row =>
+            headers.map(header => String(row[header] || ''))
+          );
+          setQueryResult([headers, ...rows]);
+        } else {
+          setQueryResult([['Result'], ['Query executed successfully']]);
+        }
       } else {
-        setQueryError('Query executed but returned no results. Check your syntax.');
+        setQueryError(result.error || 'Query execution failed');
       }
+    } catch (err) {
+      setQueryError(err instanceof Error ? err.message : 'Failed to execute query');
+    } finally {
       setIsRunning(false);
-    }, 800);
+    }
   };
 
   // Submit answer for current question
   const submitAnswer = () => {
-    setAnswers(prev => ({ ...prev, [current.id]: sqlCode }));
+    const newAnswers = { ...answers, [current.id]: sqlCode };
+    setAnswers(newAnswers);
     setSubmittedQs(prev => new Set([...prev, current.id]));
   };
 
   // Submit entire exam
-  const submitExam = () => {
-    setShowConfirmSubmit(false);
-    alert('Exam submitted successfully! Redirecting to results...');
-    window.location.href = '/student/results';
+  const submitExam = async () => {
+    if (!session?.id) return;
+
+    try {
+      await sessionApi.submitSession(session.id, answers);
+      setShowConfirmSubmit(false);
+      navigate('/student/results');
+    } catch (err) {
+      alert('Failed to submit exam: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
   };
 
+  if (loading) {
+    return (
+      <div className="exam-session">
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <div>Loading exam...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !exam) {
+    return (
+      <div className="exam-session">
+        <div style={{ textAlign: 'center', padding: '40px', color: 'red' }}>
+          <div>Error: {error || 'Exam not found'}</div>
+          <button className="btn btn-primary" onClick={() => navigate('/student/exams')}>
+            Back to Exams
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const totalMarks = questions.reduce((a, q) => a + q.marks, 0);
-  const answeredCount = Object.keys(answers).filter(k => answers[Number(k)]?.trim()).length;
+  const answeredCount = Object.keys(answers).filter(k => answers[k]?.trim()).length;
 
   return (
     <div className="exam-session">
       {/* Exam Header */}
       <div className="exam-header">
         <div className="exam-header-left">
-          <h1 className="exam-title">SQL Basics - Midterm Exam</h1>
+          <h1 className="exam-title">{exam.title}</h1>
           <div className="exam-meta">
-            <span>📚 Database Systems 101</span>
-            <span>👤 Prof. Smith</span>
+            <span>📚 {exam.course?.name || 'Unknown Course'}</span>
+            <span>👤 {exam.teacher?.name || 'Unknown Teacher'}</span>
             <span>📝 {questions.length} Questions</span>
             <span>💯 {totalMarks} Marks</span>
           </div>

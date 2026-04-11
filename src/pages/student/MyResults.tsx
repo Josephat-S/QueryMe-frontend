@@ -1,68 +1,133 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts';
+import { examApi, resultApi, sessionApi } from '../../services/api';
+
+interface QuestionDetail {
+  number: number;
+  marks: number;
+  scored: number;
+  submitted: boolean;
+}
 
 interface ExamResult {
-  id: number;
+  sessionId: string;
   title: string;
   course: string;
   date: string;
   score: number;
   total: number;
-  questions: number;
-  correct: number;
-  status: 'passed' | 'failed';
+  percentage: number;
+  status: 'passed' | 'failed' | 'submitted' | 'timed_out';
   teacher: string;
-  visibility: 'immediate' | 'end_of_exam' | 'hidden';
-  questionsDetail: { number: number; marks: number; scored: number; submitted: boolean }[];
+  questionsDetail: QuestionDetail[];
 }
 
-const mockResults: ExamResult[] = [
-  {
-    id: 1, title: 'SELECT Basics Quiz', course: 'Database Systems 101', date: '2026-03-25', score: 85, total: 100, questions: 5, correct: 4, status: 'passed', teacher: 'Prof. Smith', visibility: 'immediate',
-    questionsDetail: [
-      { number: 1, marks: 20, scored: 20, submitted: true },
-      { number: 2, marks: 20, scored: 20, submitted: true },
-      { number: 3, marks: 20, scored: 15, submitted: true },
-      { number: 4, marks: 20, scored: 20, submitted: true },
-      { number: 5, marks: 20, scored: 10, submitted: true },
-    ]
-  },
-  {
-    id: 2, title: 'CREATE TABLE Exercise', course: 'Database Systems 101', date: '2026-03-20', score: 92, total: 100, questions: 4, correct: 4, status: 'passed', teacher: 'Prof. Smith', visibility: 'immediate',
-    questionsDetail: [
-      { number: 1, marks: 25, scored: 25, submitted: true },
-      { number: 2, marks: 25, scored: 25, submitted: true },
-      { number: 3, marks: 25, scored: 22, submitted: true },
-      { number: 4, marks: 25, scored: 20, submitted: true },
-    ]
-  },
-  {
-    id: 3, title: 'WHERE Clause Practice', course: 'Database Systems 101', date: '2026-03-15', score: 45, total: 100, questions: 5, correct: 2, status: 'failed', teacher: 'Prof. Smith', visibility: 'immediate',
-    questionsDetail: [
-      { number: 1, marks: 20, scored: 20, submitted: true },
-      { number: 2, marks: 20, scored: 0, submitted: false },
-      { number: 3, marks: 20, scored: 15, submitted: true },
-      { number: 4, marks: 20, scored: 10, submitted: true },
-      { number: 5, marks: 20, scored: 0, submitted: false },
-    ]
-  },
-  {
-    id: 4, title: 'JOIN Operations Test', course: 'Data Management', date: '2026-03-10', score: 78, total: 100, questions: 6, correct: 5, status: 'passed', teacher: 'Dr. Johnson', visibility: 'end_of_exam',
-    questionsDetail: [
-      { number: 1, marks: 15, scored: 15, submitted: true },
-      { number: 2, marks: 20, scored: 18, submitted: true },
-      { number: 3, marks: 15, scored: 15, submitted: true },
-      { number: 4, marks: 20, scored: 10, submitted: true },
-      { number: 5, marks: 15, scored: 15, submitted: true },
-      { number: 6, marks: 15, scored: 5, submitted: true },
-    ]
-  },
-];
-
 const MyResults: React.FC = () => {
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const { user } = useAuth();
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [results, setResults] = useState<ExamResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const overallAvg = Math.round(mockResults.reduce((a, r) => a + (r.score / r.total) * 100, 0) / mockResults.length);
-  const passed = mockResults.filter(r => r.status === 'passed').length;
+  useEffect(() => {
+    const loadResults = async () => {
+      if (!user) {
+        setError('Please log in to view your results.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const sessions = await sessionApi.getSessionsByStudent(String(user.id));
+
+        const loadedResults = await Promise.all(
+          sessions.map(async session => {
+            const exam = await examApi.getExam(session.examId);
+            let resultData = null;
+
+            try {
+              resultData = await resultApi.getResult(session.id);
+            } catch {
+              // If result details are unavailable, continue with session data.
+            }
+
+            const totalMarks = resultData?.totalMarks ?? session.totalMarks ?? exam.questions?.reduce((sum, question) => sum + question.marks, 0) ?? 0;
+            const score = resultData?.score ?? session.score ?? 0;
+            const percentage = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
+            const status: ExamResult['status'] = resultData?.percentage !== undefined
+              ? (resultData.percentage >= 50 ? 'passed' : 'failed')
+              : session.status === 'timed_out'
+                ? 'timed_out'
+                : session.status === 'submitted'
+                  ? 'submitted'
+                  : 'submitted';
+
+            return {
+              sessionId: session.id,
+              title: exam.title,
+              course: exam.course?.name || exam.courseId || 'Unknown Course',
+              date: session.submittedAt || session.startedAt || '',
+              score,
+              total: totalMarks,
+              percentage,
+              status,
+              teacher: exam.teacher?.name || 'Unknown Teacher',
+              questionsDetail: exam.questions?.map((question, index) => ({
+                number: index + 1,
+                marks: question.marks,
+                scored: resultData?.answers?.[question.id] ? question.marks : 0,
+                submitted: Boolean(resultData?.answers?.[question.id] || session.answers?.[question.id]),
+              })) ?? [],
+            };
+          })
+        );
+
+        setResults(loadedResults.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load results');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadResults();
+  }, [user]);
+
+  const totalExams = results.length;
+  const passedCount = results.filter(r => r.status === 'passed').length;
+  const averageScore = totalExams > 0
+    ? Math.round(results.reduce((sum, r) => sum + r.percentage, 0) / totalExams)
+    : 0;
+
+  if (loading) {
+    return (
+      <div>
+        <div className="page-header">
+          <h1>My Results</h1>
+          <p>Loading results from your backend data.</p>
+        </div>
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <div>Loading results...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <div className="page-header">
+          <h1>My Results</h1>
+          <p>View your exam scores and detailed feedback</p>
+        </div>
+        <div style={{ textAlign: 'center', padding: '40px', color: 'red' }}>
+          <div>Error: {error}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -71,39 +136,37 @@ const MyResults: React.FC = () => {
         <p>View your exam scores and detailed feedback</p>
       </div>
 
-      {/* Summary stats */}
       <div className="stat-grid" style={{ marginBottom: '24px' }}>
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: 'rgba(106, 60, 176, 0.1)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6a3cb0" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
           </div>
-          <div className="stat-card-value">{mockResults.length}</div>
-          <div className="stat-card-label">Total Exams Taken</div>
+          <div className="stat-card-value">{totalExams}</div>
+          <div className="stat-card-label">Exams Taken</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: 'rgba(56, 161, 105, 0.1)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38a169" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
-          <div className="stat-card-value">{passed}</div>
+          <div className="stat-card-value">{passedCount}</div>
           <div className="stat-card-label">Passed</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: 'rgba(49, 130, 206, 0.1)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3182ce" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
           </div>
-          <div className="stat-card-value">{overallAvg}%</div>
+          <div className="stat-card-value">{averageScore}%</div>
           <div className="stat-card-label">Average Score</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: 'rgba(229, 62, 62, 0.1)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e53e3e" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
           </div>
-          <div className="stat-card-value">{mockResults.length - passed}</div>
-          <div className="stat-card-label">Failed</div>
+          <div className="stat-card-value">{totalExams - passedCount}</div>
+          <div className="stat-card-label">Not Passed</div>
         </div>
       </div>
 
-      {/* Results list */}
       <div className="content-card">
         <div className="content-card-header">
           <h2>Exam History</h2>
@@ -121,31 +184,31 @@ const MyResults: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {mockResults.map(r => (
-                <React.Fragment key={r.id}>
-                  <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
+              {results.map(result => (
+                <React.Fragment key={result.sessionId}>
+                  <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === result.sessionId ? null : result.sessionId)}>
                     <td>
-                      <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{r.title}</div>
-                      <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>👤 {r.teacher}</div>
+                      <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{result.title}</div>
+                      <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>👤 {result.teacher}</div>
                     </td>
-                    <td style={{ fontSize: '12px', color: '#666' }}>{r.course}</td>
-                    <td style={{ fontSize: '12px', color: '#666' }}>{new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
+                    <td style={{ fontSize: '12px', color: '#666' }}>{result.course}</td>
+                    <td style={{ fontSize: '12px', color: '#666' }}>{result.date ? new Date(result.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}</td>
                     <td>
-                      <span style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '15px' }}>{r.score}</span>
-                      <span style={{ color: '#888', fontSize: '12px' }}>/{r.total}</span>
-                    </td>
-                    <td>
-                      <span className={`badge ${r.status === 'passed' ? 'badge-green' : 'badge-red'}`}>{r.status}</span>
+                      <span style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '15px' }}>{result.score}</span>
+                      <span style={{ color: '#888', fontSize: '12px' }}>/{result.total}</span>
                     </td>
                     <td>
-                      <span style={{ color: '#aaa', fontSize: '14px', transition: 'transform 0.2s', display: 'inline-block', transform: expanded === r.id ? 'rotate(90deg)' : 'rotate(0)' }}>▶</span>
+                      <span className={`badge ${result.status === 'passed' ? 'badge-green' : result.status === 'failed' ? 'badge-red' : 'badge-gray'}`}>{result.status}</span>
+                    </td>
+                    <td>
+                      <span style={{ color: '#aaa', fontSize: '14px', transition: 'transform 0.2s', display: 'inline-block', transform: expanded === result.sessionId ? 'rotate(90deg)' : 'rotate(0)' }}>▶</span>
                     </td>
                   </tr>
-                  {expanded === r.id && (
+                  {expanded === result.sessionId && (
                     <tr>
                       <td colSpan={6} style={{ background: '#fafafe', padding: '16px 24px' }}>
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                          {r.questionsDetail.map(q => (
+                          {result.questionsDetail.map(q => (
                             <div key={q.number} style={{
                               padding: '10px 16px',
                               borderRadius: '10px',
@@ -163,15 +226,21 @@ const MyResults: React.FC = () => {
                           ))}
                         </div>
                         <div style={{ marginTop: '12px', display: 'flex', gap: '12px', fontSize: '11px', color: '#888' }}>
-                          <span>📊 Score: <strong style={{ color: '#1a1a2e' }}>{Math.round((r.score / r.total) * 100)}%</strong></span>
-                          <span>📝 Questions answered: <strong style={{ color: '#1a1a2e' }}>{r.correct}/{r.questions}</strong></span>
-                          <span>👁 Visibility: <strong style={{ color: '#1a1a2e' }}>{r.visibility.replace('_', ' ')}</strong></span>
+                          <span>📊 Score: <strong style={{ color: '#1a1a2e' }}>{result.percentage}%</strong></span>
+                          <span>📝 Questions reviewed: <strong style={{ color: '#1a1a2e' }}>{result.questionsDetail.length}</strong></span>
                         </div>
                       </td>
                     </tr>
                   )}
                 </React.Fragment>
               ))}
+              {results.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                    No results available yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

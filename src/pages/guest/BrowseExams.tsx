@@ -1,33 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-interface MockExam {
-  id: string;
-  title: string;
-  teacher: string;
-  questions: number;
-  duration: number;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-  category: string;
-}
-
-const exams: MockExam[] = [
-  { id: '1', title: 'SQL Fundamentals', teacher: 'Prof. Smith', questions: 15, duration: 45, difficulty: 'Easy', category: 'Basics' },
-  { id: '2', title: 'Advanced JOINS', teacher: 'Dr. Jones', questions: 10, duration: 60, difficulty: 'Medium', category: 'Intermediate' },
-  { id: '3', title: 'Subqueries & CTEs', teacher: 'Prof. Smith', questions: 12, duration: 50, difficulty: 'Medium', category: 'Intermediate' },
-  { id: '4', title: 'Database Optimization', teacher: 'Dr. Jones', questions: 8, duration: 90, difficulty: 'Hard', category: 'Advanced' },
-  { id: '5', title: 'Data Analysis with SQL', teacher: 'Prof. Smith', questions: 20, duration: 120, difficulty: 'Hard', category: 'Advanced' },
-  { id: '6', title: 'Aggregation Functions', teacher: 'Dr. Jones', questions: 10, duration: 30, difficulty: 'Easy', category: 'Basics' },
-];
+import { examApi, Exam as ApiExam } from '../../services/api';
 
 const BrowseExams: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [exams, setExams] = useState<ApiExam[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const loadExams = async () => {
+      try {
+        setLoading(true);
+        const published = await examApi.getPublishedExams();
+        setExams(published);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load exams');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExams();
+  }, []);
+
   const filteredExams = exams.filter(exam =>
-    exam.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    exam.category.toLowerCase().includes(searchTerm.toLowerCase())
+    exam.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    exam.course?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    String(exam.description || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="browse-exams">
+        <div className="page-header">
+          <h1>Browse Exams</h1>
+          <p>Loading published exams from backend.</p>
+        </div>
+        <div style={{ textAlign: 'center', padding: '40px' }}>Loading exams...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="browse-exams">
+        <div className="page-header">
+          <h1>Browse Exams</h1>
+          <p>Explore the variety of SQL assessments available in our platform.</p>
+        </div>
+        <div style={{ textAlign: 'center', padding: '40px', color: 'red' }}>Error: {error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="browse-exams">
@@ -44,7 +71,7 @@ const BrowseExams: React.FC = () => {
             </svg>
             <input
               type="text"
-              placeholder="Search by title or category..."
+              placeholder="Search by title or course..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{ fontSize: '14px' }}
@@ -58,22 +85,22 @@ const BrowseExams: React.FC = () => {
           <div key={exam.id} className="content-card stat-card" style={{ padding: '0' }}>
             <div className="content-card-body" style={{ padding: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                <span className={`badge ${exam.difficulty === 'Easy' ? 'badge-green' : exam.difficulty === 'Medium' ? 'badge-orange' : 'badge-red'}`}>
-                  {exam.difficulty}
+                <span className={`badge ${(exam.status || 'draft') === 'published' ? 'badge-green' : (exam.status || 'draft') === 'active' ? 'badge-orange' : 'badge-gray'}`}>
+                  {(exam.status || 'draft').charAt(0).toUpperCase() + (exam.status || 'draft').slice(1)}
                 </span>
-                <span className="badge badge-gray">{exam.category}</span>
+                <span className="badge badge-gray">{exam.course?.name || exam.courseId || 'Unnamed course'}</span>
               </div>
               <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1a1a2e', margin: '0 0 8px 0' }}>{exam.title}</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>Created by {exam.teacher}</p>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>{exam.description || 'No description provided.'}</p>
 
               <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
                 <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  {exam.duration}m
+                  {exam.timeLimit || exam.timeLimitMins ? `${exam.timeLimit || exam.timeLimitMins}m` : 'TBD'}
                 </div>
                 <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /></svg>
-                  {exam.questions} Questions
+                  {exam.questions?.length ?? 'N/A'} Questions
                 </div>
               </div>
 
@@ -82,7 +109,7 @@ const BrowseExams: React.FC = () => {
                 style={{ width: '100%', justifyContent: 'center' }}
                 onClick={() => navigate(`/guest/exam/${exam.id}`)}
               >
-                View Details & Results
+                View Details
               </button>
             </div>
           </div>
@@ -95,7 +122,7 @@ const BrowseExams: React.FC = () => {
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
               <h3>No exams found</h3>
-              <p>Try searching for a different title or category.</p>
+              <p>Try searching for a different title or course.</p>
             </div>
           </div>
         )}

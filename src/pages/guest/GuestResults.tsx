@@ -1,39 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../teacher/TeacherPages.css';
-
-/* ── Types ── */
-interface MockExam {
-  id: string;
-  title: string;
-  course: string;
-  status: 'active' | 'closed' | 'published';
-}
-
-/* ── Mock Data (matching teacher portal) ── */
-const mockExams: MockExam[] = [
-  {
-    id: 'e1',
-    title: 'SQL Midterm Exam',
-    course: 'Database Systems 101',
-    status: 'closed',
-  },
-  {
-    id: 'e2',
-    title: 'Joins & Aggregates Quiz',
-    course: 'Advanced SQL',
-    status: 'active',
-  },
-];
+import { examApi, Exam as ApiExam } from '../../services/api';
 
 const statusColor: Record<string, string> = {
-  active:    '#16a34a',
-  closed:    '#dc2626',
+  active: '#16a34a',
+  closed: '#dc2626',
   published: '#2563eb',
 };
 
 const GuestResults: React.FC = () => {
   const navigate = useNavigate();
+  const [exams, setExams] = useState<ApiExam[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadExams = async () => {
+      try {
+        setLoading(true);
+        const published = await examApi.getPublishedExams();
+        setExams(published);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load exams');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExams();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="teacher-page" style={{ padding: '40px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div>Loading exams...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="teacher-page" style={{ padding: '40px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'red' }}>
+        <div>Error: {error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="teacher-page" style={{ padding: '40px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -44,17 +57,17 @@ const GuestResults: React.FC = () => {
           </svg>
         </div>
         <h2 className="res-gate-title">View Exam Results</h2>
-        <p className="res-gate-sub">Select an exam below to view student scores and answer keys (Guest View).</p>
+        <p className="res-gate-sub">Select an exam below to view student score summaries (Guest View).</p>
         <div className="res-gate-list" style={{ marginTop: '24px' }}>
-          {mockExams.map(e => (
+          {exams.map(e => (
             <button key={e.id} className="res-gate-exam-btn" onClick={() => navigate(`/guest/exam/${e.id}`)}>
               <div>
                 <div className="res-gate-exam-title">{e.title}</div>
-                <div className="res-gate-exam-course">{e.course}</div>
+                <div className="res-gate-exam-course">{e.course?.name || e.courseId || 'Unknown course'}</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="res-gate-status-pill" style={{ background: statusColor[e.status] + '18', color: statusColor[e.status], border: `1px solid ${statusColor[e.status]}44` }}>
-                  {e.status.charAt(0).toUpperCase() + e.status.slice(1)}
+                <span className="res-gate-status-pill" style={{ background: (statusColor[e.status || 'started'] || '#9ca3af') + '18', color: statusColor[e.status || 'started'] || '#9ca3af', border: `1px solid ${(statusColor[e.status || 'started'] || '#9ca3af')}44` }}>
+                  {(e.status || 'started').charAt(0).toUpperCase() + (e.status || 'started').slice(1)}
                 </span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>

@@ -2,6 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import alasql from 'alasql';
+import { examApi } from '../../services/api';
 import './TeacherPages.css';
 
 // SheetJS is loaded via CDN script in index.html — available as window.XLSX
@@ -273,14 +274,71 @@ const ExamBuilder: React.FC = () => {
   };
 
   // ---- Publish handler ----
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (examStatus === 'draft') {
       setPublishing(true);
-      setTimeout(() => {
+      try {
+        // Create exam data object for backend
+        const examData = {
+          title: examTitle,
+          courseId: courseName.replace(/\s+/g, '-').toLowerCase(),
+          description: examDescription,
+          maxAttempts,
+          timeLimitMins: timeLimit,
+          visibilityMode: 'IMMEDIATE',
+          seedSql: examSetupSql || ''
+        };
+
+        // Save exam to backend
+        const savedExam = await examApi.createExam(examData);
+        
+        // Add questions to the exam
+        for (const question of questions) {
+          await examApi.addQuestion(savedExam.id, {
+            prompt: question.prompt,
+            marks: question.marks,
+            referenceQuery: question.expectedQuery,
+            orderIndex: question.number,
+            orderSensitive: question.orderSensitive,
+            partialMarks: question.partialMarks
+          });
+        }
+
+        // Publish the exam
+        await examApi.publishExam(savedExam.id);
+        
+        // Save to teacher's localStorage for display
+        const userStr = localStorage.getItem('queryme_user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        if (user && user.id) {
+          const teacherExamsKey = `teacher_exams_${user.id}`;
+          const existingExams = localStorage.getItem(teacherExamsKey);
+          const teacherExams = existingExams ? JSON.parse(existingExams) : [];
+          
+          const examForStorage = {
+            id: savedExam.id,
+            title: examTitle,
+            courseId: courseName,
+            status: 'published',
+            questionsCount: questions.length,
+            createdAt: new Date().toISOString()
+          };
+          
+          teacherExams.push(examForStorage);
+          localStorage.setItem(teacherExamsKey, JSON.stringify(teacherExams));
+        }
+        
         setExamStatus('published');
         setPublishedAt(new Date().toLocaleString());
         setPublishing(false);
-      }, 900);
+        
+        // Navigate to exams list
+        navigate('/teacher/exams');
+      } catch (error) {
+        console.error('Error publishing exam:', error);
+        setPublishing(false);
+        alert('Failed to publish exam. Please try again.');
+      }
     } else if (examStatus === 'published') {
       setExamStatus('active');
     } else if (examStatus === 'active') {
@@ -938,7 +996,6 @@ const ExamBuilder: React.FC = () => {
                     )}
                   </div>
                 </div>
-
               </div>
             </div>
           )}
