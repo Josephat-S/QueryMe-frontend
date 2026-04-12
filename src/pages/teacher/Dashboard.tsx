@@ -152,6 +152,7 @@ const TeacherDashboardHome: React.FC = () => {
 
       <div className="td-quick-actions">
         <Link to="/teacher/courses" className="td-qa-btn td-qa-primary">Create Course</Link>
+        <Link to="/teacher/students" className="td-qa-btn td-qa-primary">Register Students</Link>
         <Link to="/teacher/exams/builder" className="td-qa-btn td-qa-primary">Create New Exam</Link>
         <Link to="/teacher/exams" className="td-qa-btn td-qa-secondary">Manage Exams</Link>
         <Link to="/teacher/courses" className="td-qa-btn td-qa-secondary">Manage Courses</Link>

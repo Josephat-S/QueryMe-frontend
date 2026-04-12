@@ -48,6 +48,11 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
+  async registerStudentsBulk(payload: UserRegistrationPayload[], signal?: AbortSignal): Promise<PlatformUser[]> {
+    const response = await axiosInstance.post<PlatformUser[]>('/students/register/bulk', payload.map((item) => toBackendUserPayload(item)), { signal });
+    return unwrapResponse(response);
+  },
+
   async updateStudent(id: string, payload: UserUpdatePayload, signal?: AbortSignal): Promise<PlatformUser> {
     const response = await axiosInstance.put<PlatformUser>(`/students/${id}`, toBackendUserPayload(payload), { signal });
     return unwrapResponse(response);

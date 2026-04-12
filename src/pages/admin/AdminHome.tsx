@@ -82,7 +82,6 @@ const AdminHome: React.FC = () => {
     <div>
       <div className="page-header">
         <h1>Admin Dashboard</h1>
-        <p>Administrative overview built from real backend users, courses, exams, and result data.</p>
       </div>
 
       {error && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{error}</div>}

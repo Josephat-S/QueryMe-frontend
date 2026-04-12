@@ -16,6 +16,8 @@ export interface PlatformUser {
   email: string;
   name?: string;
   fullName?: string;
+  studentNumber?: string;
+  student_number?: string;
   role?: UserRole | string;
   roles?: string[];
   courseId?: Identifier | null;
@@ -244,6 +246,8 @@ export interface UserRegistrationPayload {
   fullName: string;
   email: string;
   password?: string;
+  studentNumber?: string;
+  student_number?: string;
   courseId?: Identifier | null;
   classGroupId?: Identifier | null;
 }
@@ -252,6 +256,8 @@ export interface UserUpdatePayload {
   fullName?: string;
   email?: string;
   password?: string;
+  studentNumber?: string | null;
+  student_number?: string | null;
   courseId?: Identifier | null;
   classGroupId?: Identifier | null;
 }
