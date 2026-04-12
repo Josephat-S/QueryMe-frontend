@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, examApi, resultApi, userApi, type Exam, type PlatformUser, type TeacherResultRow } from '../../api';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { getCourseName, normalizeRole } from '../../utils/queryme';
+import { getCourseName, getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
@@ -38,7 +38,12 @@ const AdminHome: React.FC = () => {
         );
 
         if (!controller.signal.aborted) {
-          setUsers([...admins, ...teachers, ...students, ...guests]);
+          setUsers([
+            ...withPlatformUserRole(admins, 'ADMIN'),
+            ...withPlatformUserRole(teachers, 'TEACHER'),
+            ...withPlatformUserRole(students, 'STUDENT'),
+            ...withPlatformUserRole(guests, 'GUEST'),
+          ]);
           setExams(allExams);
           setRecentRows(
             dashboards
@@ -63,10 +68,10 @@ const AdminHome: React.FC = () => {
   }, []);
 
   const roleCounts = useMemo(() => ({
-    students: users.filter((user) => normalizeRole(typeof user.role === 'string' ? user.role : undefined, user.roles) === 'STUDENT').length,
-    teachers: users.filter((user) => normalizeRole(typeof user.role === 'string' ? user.role : undefined, user.roles) === 'TEACHER').length,
-    admins: users.filter((user) => normalizeRole(typeof user.role === 'string' ? user.role : undefined, user.roles) === 'ADMIN').length,
-    guests: users.filter((user) => normalizeRole(typeof user.role === 'string' ? user.role : undefined, user.roles) === 'GUEST').length,
+    students: users.filter((user) => getPlatformUserRole(user) === 'STUDENT').length,
+    teachers: users.filter((user) => getPlatformUserRole(user) === 'TEACHER').length,
+    admins: users.filter((user) => getPlatformUserRole(user) === 'ADMIN').length,
+    guests: users.filter((user) => getPlatformUserRole(user) === 'GUEST').length,
   }), [users]);
 
   if (loading) {

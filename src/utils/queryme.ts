@@ -11,16 +11,62 @@ import type {
 
 export const normalizeId = (value: Identifier | null | undefined): string => String(value ?? '');
 
-export const normalizeRole = (value?: string | null, roles?: string[]): UserRole => {
-  const source = value || roles?.[0] || 'GUEST';
-  const normalized = source.replace('ROLE_', '').toUpperCase();
-
-  if (normalized === 'ADMIN' || normalized === 'TEACHER' || normalized === 'STUDENT' || normalized === 'GUEST') {
-    return normalized;
+const getRoleCandidate = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
   }
 
-  return 'GUEST';
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+
+    for (const key of ['authority', 'role', 'name', 'value']) {
+      const candidate = record[key];
+
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+  }
+
+  return null;
 };
+
+export const normalizeRole = (
+  value?: unknown,
+  roles?: readonly unknown[] | null,
+  fallbackRole: UserRole = 'GUEST',
+): UserRole => {
+  const candidates = [value, ...(Array.isArray(roles) ? roles : []), fallbackRole];
+
+  for (const candidate of candidates) {
+    const source = getRoleCandidate(candidate);
+
+    if (!source) {
+      continue;
+    }
+
+    const normalized = source.replace(/^ROLE_/i, '').toUpperCase();
+
+    if (normalized === 'ADMIN' || normalized === 'TEACHER' || normalized === 'STUDENT' || normalized === 'GUEST') {
+      return normalized;
+    }
+  }
+
+  return fallbackRole;
+};
+
+export const getPlatformUserRole = (
+  user?: Partial<PlatformUser> | null,
+  fallbackRole: UserRole = 'GUEST',
+): UserRole => normalizeRole(user?.role, user?.roles, fallbackRole);
+
+export const withPlatformUserRole = (
+  users: PlatformUser[],
+  fallbackRole: UserRole,
+): PlatformUser[] => users.map((user) => ({
+  ...user,
+  role: getPlatformUserRole(user, fallbackRole),
+}));
 
 export const getUserDisplayName = (user?: Partial<PlatformUser> | null): string => {
   if (!user) {
@@ -56,10 +102,7 @@ export const toAuthSessionUser = (response: AuthResponse, email: string): AuthSe
     id: normalizeId(backendUser.id),
     email: backendUser.email || email,
     name: getUserDisplayName(backendUser),
-    role: normalizeRole(
-      typeof backendUser.role === 'string' ? backendUser.role : undefined,
-      backendUser.roles,
-    ),
+    role: getPlatformUserRole(backendUser),
   };
 };
 

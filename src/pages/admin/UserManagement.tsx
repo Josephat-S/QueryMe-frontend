@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { userApi } from '../../api';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { normalizeRole } from '../../utils/queryme';
+import { getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
 import type { PlatformUser, UserRole } from '../../types/queryme';
 
 interface ManagedUser {
@@ -36,11 +36,16 @@ const UserManagement: React.FC = () => {
     ]);
 
     setUsers(
-      [...admins, ...teachers, ...students, ...guests].map((user) => ({
+      [
+        ...withPlatformUserRole(admins, 'ADMIN'),
+        ...withPlatformUserRole(teachers, 'TEACHER'),
+        ...withPlatformUserRole(students, 'STUDENT'),
+        ...withPlatformUserRole(guests, 'GUEST'),
+      ].map((user) => ({
         id: String(user.id),
         name: String(user.name || user.fullName || user.email.split('@')[0]),
         email: user.email,
-        role: normalizeRole(typeof user.role === 'string' ? user.role : undefined, user.roles),
+        role: getPlatformUserRole(user),
       })),
     );
   };
