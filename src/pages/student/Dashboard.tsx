@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
 import type { NavItem } from '../../layout/DashboardLayout';
-import { useToast } from '../../components/ToastProvider';
 import StudentHome from './StudentHome';
 import AvailableExams from './AvailableExams';
 import ExamSession from './ExamSession';
@@ -44,9 +43,6 @@ const studentNav: NavItem[] = [
   { label: 'Profile', path: '/student/profile', icon: <ProfileIcon /> },
 ];
 
-const CLIPBOARD_WARNING_TITLE = 'Clipboard blocked';
-const CLIPBOARD_WARNING_MESSAGE = 'Copy, cut, and paste are disabled in the student portal.';
-
 const isClipboardShortcut = (event: KeyboardEvent): boolean => {
   const key = event.key.toLowerCase();
 
@@ -78,20 +74,7 @@ const isClipboardActionInsidePortal = (target: EventTarget | null, portal: HTMLE
 };
 
 const StudentClipboardGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { showToast } = useToast();
   const portalRef = useRef<HTMLDivElement | null>(null);
-  const lastWarningAtRef = useRef(0);
-
-  const showClipboardWarning = useCallback(() => {
-    const now = Date.now();
-
-    if (now - lastWarningAtRef.current < 2000) {
-      return;
-    }
-
-    lastWarningAtRef.current = now;
-    showToast('warning', CLIPBOARD_WARNING_TITLE, CLIPBOARD_WARNING_MESSAGE);
-  }, [showToast]);
 
   useEffect(() => {
     const portal = portalRef.current;
@@ -106,7 +89,6 @@ const StudentClipboardGuard: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       event.preventDefault();
-      showClipboardWarning();
     };
 
     const blockClipboardShortcut = (event: KeyboardEvent) => {
@@ -119,7 +101,6 @@ const StudentClipboardGuard: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       event.preventDefault();
-      showClipboardWarning();
     };
 
     document.addEventListener('copy', blockClipboardEvent, true);
@@ -133,7 +114,7 @@ const StudentClipboardGuard: React.FC<{ children: React.ReactNode }> = ({ childr
       document.removeEventListener('paste', blockClipboardEvent, true);
       document.removeEventListener('keydown', blockClipboardShortcut, true);
     };
-  }, [showClipboardWarning]);
+  }, []);
 
   return <div ref={portalRef}>{children}</div>;
 };
