@@ -89,7 +89,11 @@ const TeacherDashboardHome: React.FC = () => {
           teacherCourses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [] as Exam[])),
         );
 
-        const exams = examLists.flat();
+        const exams = [...new Map(
+          examLists
+            .flat()
+            .map((exam) => [String(exam.id), exam]),
+        ).values()];
         const publishedExams = exams.filter((exam) => normalizeExamStatus(exam.status) === 'PUBLISHED');
 
         const dashboards = await Promise.all(
