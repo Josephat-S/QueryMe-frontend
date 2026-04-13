@@ -42,8 +42,13 @@ const ExamsList: React.FC = () => {
       ),
     );
 
-    const rows = examLists
-      .flat()
+    const uniqueExams = [...new Map(
+      examLists
+        .flat()
+        .map((exam) => [String(exam.id), exam]),
+    ).values()];
+
+    const rows = uniqueExams
       .map((exam) => ({
         id: String(exam.id),
         title: exam.title,

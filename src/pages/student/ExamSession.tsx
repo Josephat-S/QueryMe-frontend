@@ -204,6 +204,11 @@ const ExamSession: React.FC = () => {
         query: currentSql,
       });
 
+      if (!response.submissionId) {
+        setQueryError(response.executionError || 'We could not record this submission. Please try again.');
+        return;
+      }
+
       const feedback = normalizeFeedback(response);
 
       setSubmittedQuestions((previous) => new Set(previous).add(currentQuestion.id));
@@ -211,9 +216,10 @@ const ExamSession: React.FC = () => {
         ...previous,
         [currentQuestion.id]: feedback,
       }));
+      setQueryError('');
 
-      if (response.executionError) {
-        setQueryError(response.executionError);
+      if (currentIndex < questions.length - 1) {
+        switchQuestion(currentIndex + 1);
       }
     } catch (err) {
       setQueryError(extractErrorMessage(err, 'Failed to submit your query.'));
@@ -420,17 +426,17 @@ const ExamSession: React.FC = () => {
 };
 
 const normalizeFeedback = (response: QuerySubmissionResponse): SubmissionFeedback => {
-  if (response.executionError) {
-    return {
-      visible: false,
-      message: response.executionError,
-    };
-  }
-
   if (response.resultsVisible === false) {
     return {
       visible: false,
       message: 'Your query was submitted successfully. Detailed results are hidden until the exam visibility rules allow them.',
+    };
+  }
+
+  if (response.executionError) {
+    return {
+      visible: false,
+      message: 'Your query was submitted successfully for this question.',
     };
   }
 
