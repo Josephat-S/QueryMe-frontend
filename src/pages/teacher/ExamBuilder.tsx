@@ -191,22 +191,24 @@ const ExamBuilder: React.FC = () => {
         : await examApi.createExam(examPayload);
 
       const persistedExamId = String(savedExam.id);
-      const savedQuestions = await Promise.all(
-        questions.map((question, index) => {
-          const payload = {
-            prompt: question.prompt.trim(),
-            referenceQuery: question.referenceQuery.trim(),
-            marks: question.marks,
-            orderIndex: index + 1,
-            orderSensitive: question.orderSensitive,
-            partialMarks: question.partialMarks,
-          };
+      const savedQuestions: Question[] = [];
 
-          return question.questionId
-            ? questionApi.updateQuestion(persistedExamId, question.questionId, payload)
-            : questionApi.createQuestion(persistedExamId, payload);
-        }),
-      );
+      for (const [index, question] of questions.entries()) {
+        const payload = {
+          prompt: question.prompt.trim(),
+          referenceQuery: question.referenceQuery.trim(),
+          marks: question.marks,
+          orderIndex: index + 1,
+          orderSensitive: question.orderSensitive,
+          partialMarks: question.partialMarks,
+        };
+
+        const savedQuestion = question.questionId
+          ? await questionApi.updateQuestion(persistedExamId, question.questionId, payload)
+          : await questionApi.createQuestion(persistedExamId, payload);
+
+        savedQuestions.push(savedQuestion);
+      }
 
       if (publishAfterSave) {
         await examApi.publishExam(persistedExamId);

@@ -2,6 +2,8 @@ import axiosInstance from './axiosInstance';
 import { unwrapResponse } from './helpers';
 import type { CreateExamPayload, Exam, UpdateExamPayload } from '../types/queryme';
 
+const EXAM_MUTATION_TIMEOUT_MS = 120000;
+
 export const examApi = {
   async getExam(examId: string, signal?: AbortSignal): Promise<Exam> {
     const response = await axiosInstance.get<Exam>(`/exams/${examId}`, { signal });
@@ -19,32 +21,50 @@ export const examApi = {
   },
 
   async createExam(payload: CreateExamPayload, signal?: AbortSignal): Promise<Exam> {
-    const response = await axiosInstance.post<Exam>('/exams', payload, { signal });
+    const response = await axiosInstance.post<Exam>('/exams', payload, {
+      signal,
+      timeout: EXAM_MUTATION_TIMEOUT_MS,
+    });
     return unwrapResponse(response);
   },
 
   async updateExam(examId: string, payload: UpdateExamPayload, signal?: AbortSignal): Promise<Exam> {
-    const response = await axiosInstance.put<Exam>(`/exams/${examId}`, payload, { signal });
+    const response = await axiosInstance.put<Exam>(`/exams/${examId}`, payload, {
+      signal,
+      timeout: EXAM_MUTATION_TIMEOUT_MS,
+    });
     return unwrapResponse(response);
   },
 
   async publishExam(examId: string, signal?: AbortSignal): Promise<Exam> {
-    const response = await axiosInstance.patch<Exam>(`/exams/${examId}/publish`, undefined, { signal });
+    const response = await axiosInstance.patch<Exam>(`/exams/${examId}/publish`, undefined, {
+      signal,
+      timeout: EXAM_MUTATION_TIMEOUT_MS,
+    });
     return unwrapResponse(response);
   },
 
   async unpublishExam(examId: string, signal?: AbortSignal): Promise<Exam> {
-    const response = await axiosInstance.patch<Exam>(`/exams/${examId}/unpublish`, undefined, { signal });
+    const response = await axiosInstance.patch<Exam>(`/exams/${examId}/unpublish`, undefined, {
+      signal,
+      timeout: EXAM_MUTATION_TIMEOUT_MS,
+    });
     return unwrapResponse(response);
   },
 
   async closeExam(examId: string, signal?: AbortSignal): Promise<Exam> {
-    const response = await axiosInstance.patch<Exam>(`/exams/${examId}/close`, undefined, { signal });
+    const response = await axiosInstance.patch<Exam>(`/exams/${examId}/close`, undefined, {
+      signal,
+      timeout: EXAM_MUTATION_TIMEOUT_MS,
+    });
     return unwrapResponse(response);
   },
 
   async deleteExam(examId: string, signal?: AbortSignal): Promise<void> {
-    const response = await axiosInstance.delete<void>(`/exams/${examId}`, { signal });
+    const response = await axiosInstance.delete<void>(`/exams/${examId}`, {
+      signal,
+      timeout: EXAM_MUTATION_TIMEOUT_MS,
+    });
     return unwrapResponse(response);
   },
 };

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
 import type { NavItem } from '../../layout/DashboardLayout';
+import { useToast } from '../../components/ToastProvider';
 import StudentHome from './StudentHome';
 import AvailableExams from './AvailableExams';
 import ExamSession from './ExamSession';
@@ -43,18 +44,114 @@ const studentNav: NavItem[] = [
   { label: 'Profile', path: '/student/profile', icon: <ProfileIcon /> },
 ];
 
+const CLIPBOARD_WARNING_TITLE = 'Clipboard blocked';
+const CLIPBOARD_WARNING_MESSAGE = 'Copy, cut, and paste are disabled in the student portal.';
+
+const isClipboardShortcut = (event: KeyboardEvent): boolean => {
+  const key = event.key.toLowerCase();
+
+  if ((event.ctrlKey || event.metaKey) && (key === 'c' || key === 'x' || key === 'v' || key === 'insert')) {
+    return true;
+  }
+
+  if (event.shiftKey && (key === 'insert' || key === 'delete')) {
+    return true;
+  }
+
+  return false;
+};
+
+const isClipboardActionInsidePortal = (target: EventTarget | null, portal: HTMLElement): boolean => {
+  if (target instanceof Node && portal.contains(target)) {
+    return true;
+  }
+
+  if (document.activeElement instanceof Node && portal.contains(document.activeElement)) {
+    return true;
+  }
+
+  const selection = window.getSelection();
+  return Boolean(
+    (selection?.anchorNode && portal.contains(selection.anchorNode))
+      || (selection?.focusNode && portal.contains(selection.focusNode)),
+  );
+};
+
+const StudentClipboardGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { showToast } = useToast();
+  const portalRef = useRef<HTMLDivElement | null>(null);
+  const lastWarningAtRef = useRef(0);
+
+  const showClipboardWarning = useCallback(() => {
+    const now = Date.now();
+
+    if (now - lastWarningAtRef.current < 2000) {
+      return;
+    }
+
+    lastWarningAtRef.current = now;
+    showToast('warning', CLIPBOARD_WARNING_TITLE, CLIPBOARD_WARNING_MESSAGE);
+  }, [showToast]);
+
+  useEffect(() => {
+    const portal = portalRef.current;
+
+    if (!portal) {
+      return undefined;
+    }
+
+    const blockClipboardEvent = (event: Event) => {
+      if (!isClipboardActionInsidePortal(event.target, portal)) {
+        return;
+      }
+
+      event.preventDefault();
+      showClipboardWarning();
+    };
+
+    const blockClipboardShortcut = (event: KeyboardEvent) => {
+      if (!isClipboardShortcut(event)) {
+        return;
+      }
+
+      if (!isClipboardActionInsidePortal(event.target, portal)) {
+        return;
+      }
+
+      event.preventDefault();
+      showClipboardWarning();
+    };
+
+    document.addEventListener('copy', blockClipboardEvent, true);
+    document.addEventListener('cut', blockClipboardEvent, true);
+    document.addEventListener('paste', blockClipboardEvent, true);
+    document.addEventListener('keydown', blockClipboardShortcut, true);
+
+    return () => {
+      document.removeEventListener('copy', blockClipboardEvent, true);
+      document.removeEventListener('cut', blockClipboardEvent, true);
+      document.removeEventListener('paste', blockClipboardEvent, true);
+      document.removeEventListener('keydown', blockClipboardShortcut, true);
+    };
+  }, [showClipboardWarning]);
+
+  return <div ref={portalRef}>{children}</div>;
+};
+
 const StudentDashboard: React.FC = () => {
   return (
     <DashboardLayout navItems={studentNav} portalTitle="Student Portal" accentColor="#6a3cb0">
-      <Routes>
-        <Route index element={<StudentHome />} />
-        <Route path="exams" element={<AvailableExams />} />
-        <Route path="exam-session" element={<ExamSession />} />
-        <Route path="exam-session/:examId" element={<ExamSession />} />
-        <Route path="results" element={<MyResults />} />
-        <Route path="profile" element={<StudentProfile />} />
-        <Route path="*" element={<Navigate to="/student" replace />} />
-      </Routes>
+      <StudentClipboardGuard>
+        <Routes>
+          <Route index element={<StudentHome />} />
+          <Route path="exams" element={<AvailableExams />} />
+          <Route path="exam-session" element={<ExamSession />} />
+          <Route path="exam-session/:examId" element={<ExamSession />} />
+          <Route path="results" element={<MyResults />} />
+          <Route path="profile" element={<StudentProfile />} />
+          <Route path="*" element={<Navigate to="/student" replace />} />
+        </Routes>
+      </StudentClipboardGuard>
     </DashboardLayout>
   );
 };
