@@ -169,19 +169,17 @@ const TeacherProfile: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Course Name</th>
-                    <th>Course ID</th>
                   </tr>
                 </thead>
                 <tbody>
                   {courses.map((course) => (
                     <tr key={course.id}>
                       <td>{course.name}</td>
-                      <td>{course.id}</td>
                     </tr>
                   ))}
                   {courses.length === 0 && (
                     <tr>
-                      <td colSpan={2} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                      <td colSpan={1} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
                         No linked courses were returned for your profile.
                       </td>
                     </tr>

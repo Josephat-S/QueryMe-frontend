@@ -199,7 +199,6 @@ const TeacherCourses: React.FC = () => {
                     </div>
                     <p className="course-description">{course.description?.trim() || 'No description provided yet.'}</p>
                     <div className="course-list-meta">
-                      <span className="course-chip">Course ID: {String(course.id)}</span>
                       <span className="course-chip">Teacher: {course.teacherName || user?.name || 'You'}</span>
                     </div>
                   </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { courseApi, examApi, sessionApi, userApi, type Exam, type PlatformUser, type Session } from '../../api';
+import { courseApi, examApi, sessionApi, userApi, type CourseEnrollment, type Exam, type PlatformUser, type Session } from '../../api';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, isSessionComplete } from '../../utils/queryme';
@@ -18,16 +18,232 @@ interface SessionRow {
   status: SessionStatus;
 }
 
+interface StudentProfile {
+  name: string;
+  email: string;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' ? value as Record<string, unknown> : {}
+);
+
+const getRecordValue = (record: Record<string, unknown>, keys: string[]): unknown => {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+const getStudentPrimaryId = (student?: Partial<PlatformUser> | null): string => {
+  if (!student) {
+    return '';
+  }
+
+  const record = asRecord(student);
+  const value = getRecordValue(record, ['id', 'studentId', 'student_id']);
+  return value !== undefined ? String(value) : '';
+};
+
+const getStudentUserId = (student?: Partial<PlatformUser> | null): string => {
+  if (!student) {
+    return '';
+  }
+
+  const record = asRecord(student);
+  const nestedUserRecord = asRecord(record.user);
+  const value = getRecordValue(record, ['userId', 'user_id'])
+    ?? getRecordValue(nestedUserRecord, ['id', 'userId', 'user_id']);
+
+  return value !== undefined ? String(value) : '';
+};
+
+const extractStudentIdFromSandboxSchema = (schema?: string | null): string => {
+  if (!schema || typeof schema !== 'string') {
+    return '';
+  }
+
+  const marker = '_student_';
+  const markerIndex = schema.lastIndexOf(marker);
+  if (markerIndex < 0) {
+    return '';
+  }
+
+  const token = schema.slice(markerIndex + marker.length).trim();
+  return token;
+};
+
+const getEnrollmentStudentId = (enrollment: CourseEnrollment): string => {
+  const enrollmentRecord = asRecord(enrollment);
+  const studentRecord = asRecord(enrollmentRecord.student);
+  const value = getRecordValue(enrollmentRecord, ['studentId', 'student_id'])
+    ?? getRecordValue(studentRecord, ['id', 'studentId', 'student_id']);
+
+  return value !== undefined ? String(value) : '';
+};
+
+const getEnrollmentStudentUserId = (enrollment: CourseEnrollment): string => {
+  const enrollmentRecord = asRecord(enrollment);
+  const studentRecord = asRecord(enrollmentRecord.student);
+  const studentUserRecord = asRecord(studentRecord.user);
+  const value = getRecordValue(enrollmentRecord, ['studentUserId', 'student_user_id', 'userId', 'user_id'])
+    ?? getRecordValue(studentRecord, ['userId', 'user_id'])
+    ?? getRecordValue(studentUserRecord, ['id', 'userId', 'user_id']);
+
+  return value !== undefined ? String(value) : '';
+};
+
+const getEnrollmentStudentName = (enrollment: CourseEnrollment): string => {
+  const enrollmentRecord = asRecord(enrollment);
+  const studentRecord = asRecord(enrollmentRecord.student);
+  const studentUserRecord = asRecord(studentRecord.user);
+  const value = getRecordValue(enrollmentRecord, ['studentName', 'student_name'])
+    ?? getRecordValue(studentRecord, ['name', 'fullName', 'full_name'])
+    ?? getRecordValue(studentUserRecord, ['name', 'fullName', 'full_name']);
+
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+const getEnrollmentStudentEmail = (enrollment: CourseEnrollment): string => {
+  const enrollmentRecord = asRecord(enrollment);
+  const studentRecord = asRecord(enrollmentRecord.student);
+  const studentUserRecord = asRecord(studentRecord.user);
+  const value = getRecordValue(enrollmentRecord, ['studentEmail', 'student_email', 'email'])
+    ?? getRecordValue(studentRecord, ['email'])
+    ?? getRecordValue(studentUserRecord, ['email']);
+
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+const buildEnrollmentProfiles = (enrollments: CourseEnrollment[]): Record<string, StudentProfile> => {
+  const profiles: Record<string, StudentProfile> = {};
+
+  enrollments.forEach((enrollment) => {
+    const studentId = getEnrollmentStudentId(enrollment);
+    const studentUserId = getEnrollmentStudentUserId(enrollment);
+    const name = getEnrollmentStudentName(enrollment);
+    const email = getEnrollmentStudentEmail(enrollment);
+
+    if ((!studentId && !studentUserId) || !name) {
+      return;
+    }
+
+    const profile: StudentProfile = {
+      name,
+      email: email || 'No email',
+    };
+
+    if (studentId) {
+      profiles[studentId] = profile;
+    }
+
+    if (studentUserId) {
+      profiles[studentUserId] = profile;
+    }
+  });
+
+  return profiles;
+};
+
+const getStudentName = (student?: Partial<PlatformUser> | null): string => {
+  if (!student) {
+    return '';
+  }
+
+  if (typeof student.name === 'string' && student.name.trim()) {
+    return student.name.trim();
+  }
+
+  if (typeof student.fullName === 'string' && student.fullName.trim()) {
+    return student.fullName.trim();
+  }
+
+  const record = asRecord(student);
+  const nestedUserRecord = asRecord(record.user);
+  const value = getRecordValue(record, ['full_name'])
+    ?? getRecordValue(nestedUserRecord, ['name', 'fullName', 'full_name']);
+
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  return '';
+};
+
+const getStudentEmail = (student?: Partial<PlatformUser> | null): string => {
+  if (!student) {
+    return '';
+  }
+
+  if (typeof student.email === 'string' && student.email.trim()) {
+    return student.email.trim();
+  }
+
+  const record = asRecord(student);
+  const nestedUserRecord = asRecord(record.user);
+  const value = getRecordValue(record, ['studentEmail', 'student_email'])
+    ?? getRecordValue(nestedUserRecord, ['email']);
+
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  return '';
+};
+
+const getSessionLinkedStudent = (session: Session): Partial<PlatformUser> | null => {
+  const record = session as Record<string, unknown>;
+  const value = record.student;
+
+  if (value && typeof value === 'object') {
+    return value as Partial<PlatformUser>;
+  }
+
+  return null;
+};
+
 const ExamSessionsMonitor: React.FC = () => {
   const { user } = useAuth();
   const [examOptions, setExamOptions] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, PlatformUser>>({});
+  const [enrollmentProfilesById, setEnrollmentProfilesById] = useState<Record<string, StudentProfile>>({});
   const [loading, setLoading] = useState(true);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+
+  const mapSessionsToRows = (
+    sessions: Session[],
+    studentsLookup: Record<string, PlatformUser>,
+    enrollmentProfiles: Record<string, StudentProfile>,
+  ): SessionRow[] => (
+    sessions.map((session) => {
+      const sessionStudentId = String(session.studentId || '');
+      const schemaStudentId = extractStudentIdFromSandboxSchema(String(session.sandboxSchema || ''));
+      const lookupKey = sessionStudentId || schemaStudentId;
+      const enrollmentProfile = enrollmentProfiles[lookupKey];
+      const resolvedStudent = studentsLookup[lookupKey];
+      const linkedStudent = getSessionLinkedStudent(session);
+      const studentName = enrollmentProfile?.name || getStudentName(resolvedStudent) || getStudentName(linkedStudent) || 'Student';
+      const studentEmail = enrollmentProfile?.email || getStudentEmail(resolvedStudent) || getStudentEmail(linkedStudent) || 'No email';
+
+      return {
+        id: String(session.id),
+        studentName,
+        studentEmail,
+        startedAt: session.startedAt || '',
+        submittedAt: session.submittedAt || '',
+        expiresAt: session.expiresAt || '',
+        sandboxSchema: String(session.sandboxSchema || 'N/A'),
+        status: getSessionStatus(session),
+      };
+    })
+  );
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -58,7 +274,20 @@ const ExamSessionsMonitor: React.FC = () => {
         );
 
         if (!controller.signal.aborted) {
-          const byId = Object.fromEntries(students.map((student) => [String(student.id), student]));
+          const byId = students.reduce<Record<string, PlatformUser>>((acc, student) => {
+            const primaryId = getStudentPrimaryId(student);
+            const userId = getStudentUserId(student);
+
+            if (primaryId) {
+              acc[primaryId] = student;
+            }
+
+            if (userId) {
+              acc[userId] = student;
+            }
+
+            return acc;
+          }, {});
           const exams = examLists.flat();
           setStudentsById(byId);
           setExamOptions(exams);
@@ -91,32 +320,36 @@ const ExamSessionsMonitor: React.FC = () => {
     setLoadingSessions(true);
     setError(null);
 
-    void sessionApi.getSessionsByExam(selectedExamId, controller.signal)
-      .then((sessions) => {
+    void (async () => {
+      const selectedExam = examOptions.find((exam) => String(exam.id) === selectedExamId);
+      const selectedCourseId = selectedExam?.courseId ? String(selectedExam.courseId) : '';
+      const enrollmentProfiles = selectedCourseId
+        ? await courseApi.getEnrollmentsByCourse(selectedCourseId, controller.signal)
+          .then((enrollments) => buildEnrollmentProfiles(enrollments))
+          .catch(() => ({} as Record<string, StudentProfile>))
+        : {};
+
+      if (!controller.signal.aborted) {
+        setEnrollmentProfilesById(enrollmentProfiles);
+      }
+
+      const sessions = await sessionApi.getSessionsByExam(selectedExamId, controller.signal);
+
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      const nextRows = mapSessionsToRows(sessions, studentsById, enrollmentProfiles);
+      if (!controller.signal.aborted) {
+        setRows(nextRows);
+      }
+    })()
+      .catch((err) => {
         if (controller.signal.aborted) {
           return;
         }
 
-        setRows(
-          sessions.map((session) => {
-            const student = studentsById[String(session.studentId)];
-            return {
-              id: String(session.id),
-              studentName: String(student?.name || student?.fullName || session.studentId),
-              studentEmail: String(student?.email || 'No email'),
-              startedAt: session.startedAt || '',
-              submittedAt: session.submittedAt || '',
-              expiresAt: session.expiresAt || '',
-              sandboxSchema: String(session.sandboxSchema || 'N/A'),
-              status: getSessionStatus(session),
-            };
-          }),
-        );
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load exam sessions.'));
-        }
+        setError(extractErrorMessage(err, 'Failed to load exam sessions.'));
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -125,7 +358,7 @@ const ExamSessionsMonitor: React.FC = () => {
       });
 
     return () => controller.abort();
-  }, [selectedExamId, studentsById]);
+  }, [selectedExamId, studentsById, examOptions]);
 
   const counts = useMemo(() => ({
     all: rows.length,
@@ -140,21 +373,8 @@ const ExamSessionsMonitor: React.FC = () => {
     try {
       await sessionApi.submitSession(sessionId);
       const refreshed = await sessionApi.getSessionsByExam(selectedExamId);
-      setRows(
-        refreshed.map((session) => {
-          const student = studentsById[String(session.studentId)];
-          return {
-            id: String(session.id),
-            studentName: String(student?.name || student?.fullName || session.studentId),
-            studentEmail: String(student?.email || 'No email'),
-            startedAt: session.startedAt || '',
-            submittedAt: session.submittedAt || '',
-            expiresAt: session.expiresAt || '',
-            sandboxSchema: String(session.sandboxSchema || 'N/A'),
-            status: getSessionStatus(session),
-          };
-        }),
-      );
+      const nextRows = mapSessionsToRows(refreshed, studentsById, enrollmentProfilesById);
+      setRows(nextRows);
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to submit that active session.'));
     }

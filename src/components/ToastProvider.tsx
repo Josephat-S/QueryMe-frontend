@@ -71,6 +71,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const counter = useRef(0);
+  const isDarkMode = document.body.classList.contains('dark-mode');
 
   const showToast = useCallback((type: ToastType, title: string, message?: string) => {
     const id = ++counter.current;
@@ -132,20 +133,27 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       {/* ── Confirm Modal ── */}
       {confirmState && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-          zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(4px)',
-          animation: 'fadeIn 0.2s ease',
-        }}>
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+            zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+            animation: 'fadeIn 0.2s ease',
+          }}
+          onClick={() => handleConfirm(false)}
+          role="presentation"
+        >
           <div style={{
-            background: 'var(--confirm-bg, #fff)',
+            background: isDarkMode ? '#1e293b' : '#fff',
+            color: isDarkMode ? '#f8fafc' : '#1a1a2e',
             borderRadius: '20px',
             padding: '32px 28px',
             width: '420px', maxWidth: '92vw',
             boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
             animation: 'scaleIn 0.25s cubic-bezier(0.34,1.56,0.64,1)',
-          }}>
+          }}
+          onClick={(event) => event.stopPropagation()}
+          >
             {/* Icon */}
             <div style={{
               width: '52px', height: '52px', borderRadius: '50%',
@@ -165,15 +173,16 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               )}
             </div>
 
-            <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>{confirmState.title}</h2>
-            <p style={{ margin: '0 0 28px', fontSize: '14px', opacity: 0.7, lineHeight: 1.6 }}>{confirmState.message}</p>
+            <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: isDarkMode ? '#f8fafc' : '#1a1a2e' }}>{confirmState.title}</h2>
+            <p style={{ margin: '0 0 28px', fontSize: '14px', opacity: 0.78, lineHeight: 1.6, color: isDarkMode ? '#cbd5e1' : '#475569' }}>{confirmState.message}</p>
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => handleConfirm(false)}
                 style={{
                   padding: '10px 22px', borderRadius: '10px', border: '1px solid var(--cancel-border, #e2e8f0)',
-                  background: 'transparent', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                  background: isDarkMode ? '#0f172a' : 'transparent', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                  color: isDarkMode ? '#cbd5e1' : '#334155',
                 }}
               >
                 Cancel
@@ -209,7 +218,6 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         body.dark-mode {
           --toast-bg: #1e293b;
-          --confirm-bg: #1e293b;
           --cancel-border: #334155;
         }
       `}</style>

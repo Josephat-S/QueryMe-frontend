@@ -11,7 +11,6 @@ type StudentStatusFilter = 'all' | 'correct' | 'reviewed';
 interface StudentSummaryRow {
   studentId: string;
   studentName: string;
-  sessionIds: string[];
   questionCount: number;
   totalScore: number;
   totalMaxScore: number;
@@ -48,7 +47,7 @@ const ResultsDashboard: React.FC = () => {
   const [scoreBandFilter, setScoreBandFilter] = useState<ScoreBand>('all');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [expandedStudentIds, setExpandedStudentIds] = useState<string[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<StudentSummaryRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -134,7 +133,6 @@ const ResultsDashboard: React.FC = () => {
         grouped.set(studentId, {
           studentId,
           studentName: row.studentName || studentId,
-          sessionIds: row.sessionId ? [String(row.sessionId)] : [],
           questionCount: 1,
           totalScore: typeof row.score === 'number' ? row.score : 0,
           totalMaxScore: typeof row.maxScore === 'number' ? row.maxScore : 0,
@@ -152,13 +150,6 @@ const ResultsDashboard: React.FC = () => {
       existing.totalMaxScore += typeof row.maxScore === 'number' ? row.maxScore : 0;
       existing.correctCount += row.isCorrect ? 1 : 0;
       existing.details.push(row);
-
-      if (row.sessionId) {
-        const sessionId = String(row.sessionId);
-        if (!existing.sessionIds.includes(sessionId)) {
-          existing.sessionIds.push(sessionId);
-        }
-      }
 
       if (row.submittedAt) {
         const latestTimestamp = existing.latestSubmittedAt ? new Date(existing.latestSubmittedAt).getTime() : 0;
@@ -224,8 +215,26 @@ const ResultsDashboard: React.FC = () => {
   }, [selectedExamId, searchQuery, statusFilter, scoreBandFilter, pageSize]);
 
   useEffect(() => {
-    setExpandedStudentIds([]);
+    setSelectedStudent(null);
   }, [selectedExamId, searchQuery, statusFilter, scoreBandFilter, currentPage]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedStudent(null);
+      }
+    };
+
+    if (selectedStudent) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', onKeyDown);
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectedStudent]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const boundedPage = Math.min(currentPage, totalPages);
@@ -254,15 +263,6 @@ const ResultsDashboard: React.FC = () => {
     return Math.round((totals.totalScore / totals.totalMaxScore) * 100);
   }, [filteredRows]);
 
-  const toggleStudentDetails = (studentId: string) => {
-    setExpandedStudentIds((previous) => {
-      if (previous.includes(studentId)) {
-        return previous.filter((id) => id !== studentId);
-      }
-      return [...previous, studentId];
-    });
-  };
-
   if (loadingOptions) {
     return <div className="teacher-page" style={{ padding: '24px' }}>Loading results dashboard...</div>;
   }
@@ -273,7 +273,7 @@ const ResultsDashboard: React.FC = () => {
         <div>
           <h1 className="builder-title" style={{ fontSize: '18px' }}>Results Dashboard</h1>
           <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#666' }}>
-            Review total marks per student. Click a student row to expand question-level details.
+            Review total marks per student. Click View to open question-level marks.
           </p>
         </div>
       </div>
@@ -345,73 +345,35 @@ const ResultsDashboard: React.FC = () => {
               </thead>
               <tbody>
                 {paginatedRows.map((student) => {
-                  const isExpanded = expandedStudentIds.includes(student.studentId);
                   return (
-                    <React.Fragment key={student.studentId}>
-                      <tr
-                        className={`results-student-row ${isExpanded ? 'is-expanded' : ''}`}
-                        onClick={() => toggleStudentDetails(student.studentId)}
-                      >
-                        <td>
-                          <div className="sess-student-name">{student.studentName || student.studentId}</div>
-                          <div className="sess-student-email">
-                            {student.sessionIds.length > 0 ? `Sessions ${student.sessionIds.join(', ')}` : 'No session id'}
-                          </div>
-                        </td>
-                        <td>{student.totalScore}/{student.totalMaxScore} ({student.averagePercent}%)</td>
-                        <td>{student.questionCount}</td>
-                        <td>
-                          <span className={`badge ${student.status === 'Correct' ? 'badge-green' : 'badge-gray'}`}>
-                            {student.status}
-                          </span>
-                        </td>
-                        <td>{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="results-expand-button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleStudentDetails(student.studentId);
-                            }}
-                          >
-                            {isExpanded ? 'Hide' : 'View'}
-                          </button>
-                        </td>
+                    <tr className="results-student-row" key={student.studentId}>
+                      <td>
+                        <div className="sess-student-name">{student.studentName || student.studentId}</div>
+                        <div className="sess-student-email">
+                          {student.questionCount} question{student.questionCount === 1 ? '' : 's'} attempted
+                        </div>
+                      </td>
+                      <td>{student.totalScore}/{student.totalMaxScore} ({student.averagePercent}%)</td>
+                      <td>{student.questionCount}</td>
+                      <td>
+                        <span className={`badge ${student.status === 'Correct' ? 'badge-green' : 'badge-gray'}`}>
+                          {student.status}
+                        </span>
+                      </td>
+                      <td>{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="results-expand-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedStudent(student);
+                          }}
+                        >
+                          View
+                        </button>
+                      </td>
                       </tr>
-                      {isExpanded && (
-                        <tr className="results-student-details-row">
-                          <td colSpan={6}>
-                            <div className="results-details-wrap">
-                              <table className="results-subtable">
-                                <thead>
-                                  <tr>
-                                    <th>Question</th>
-                                    <th>Score</th>
-                                    <th>Status</th>
-                                    <th>Submitted</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {student.details.map((detail, index) => (
-                                    <tr key={`${student.studentId}-${String(detail.questionId)}-${index}`}>
-                                      <td>{detail.questionPrompt || String(detail.questionId)}</td>
-                                      <td>{detail.score ?? 0}/{detail.maxScore ?? 0}</td>
-                                      <td>
-                                        <span className={`badge ${detail.isCorrect ? 'badge-green' : 'badge-gray'}`}>
-                                          {detail.isCorrect ? 'Correct' : 'Reviewed'}
-                                        </span>
-                                      </td>
-                                      <td>{detail.submittedAt ? new Date(detail.submittedAt).toLocaleString() : 'N/A'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -444,6 +406,75 @@ const ResultsDashboard: React.FC = () => {
           </>
         )}
       </div>
+
+      {selectedStudent && (
+        <div
+          className="results-modal-overlay"
+          onClick={() => setSelectedStudent(null)}
+          role="presentation"
+        >
+          <div
+            className="results-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedStudent.studentName} question marks`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="results-modal-header">
+              <div>
+                <h2 className="results-modal-title">{selectedStudent.studentName}</h2>
+                <p className="results-modal-subtitle">Question-by-question marks breakdown</p>
+              </div>
+              <button
+                type="button"
+                className="results-modal-close"
+                onClick={() => setSelectedStudent(null)}
+                aria-label="Close details"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="results-modal-summary">
+              <div className="results-modal-summary-item">
+                <span>Total Score</span>
+                <strong>{selectedStudent.totalScore}/{selectedStudent.totalMaxScore}</strong>
+              </div>
+              <div className="results-modal-summary-item">
+                <span>Average</span>
+                <strong>{selectedStudent.averagePercent}%</strong>
+              </div>
+              <div className="results-modal-summary-item">
+                <span>Questions</span>
+                <strong>{selectedStudent.questionCount}</strong>
+              </div>
+            </div>
+
+            <div className="results-modal-table-wrap">
+              <table className="results-subtable">
+                <thead>
+                  <tr>
+                    <th>Question No.</th>
+                    <th>Marks Scored</th>
+                    <th>Max Marks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...selectedStudent.details]
+                    .sort((a, b) => Number(a.questionId) - Number(b.questionId))
+                    .map((detail, index) => (
+                      <tr key={`${selectedStudent.studentId}-${String(detail.questionId)}-${index}`}>
+                        <td>Question {index + 1}</td>
+                        <td>{detail.score ?? 0}</td>
+                        <td>{detail.maxScore ?? 0}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

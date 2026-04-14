@@ -100,6 +100,23 @@ const getEnrollmentStudentEmail = (enrollment: CourseEnrollment): string | undef
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 };
 
+const getStudentEmail = (student: Partial<PlatformUser> | null | undefined): string | undefined => {
+  const studentRecord = asRecord(student);
+  const studentUserRecord = asRecord(studentRecord.user);
+
+  const value = getRecordValue(studentRecord, ['email'])
+    ?? getRecordValue(studentUserRecord, ['email']);
+
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+};
+
+const getStudentEnrollmentLabel = (student: PlatformUser): string => {
+  const displayName = getUserDisplayName(student);
+  const email = getStudentEmail(student);
+
+  return email ? `${displayName} (${email})` : displayName;
+};
+
 const isNullParseEnrollmentError = (error: unknown): boolean => extractErrorMessage(error).toLowerCase().includes('cannot parse null string');
 
 const getMembershipSourceLabel = (source: MembershipSource): string => {
@@ -424,7 +441,7 @@ const CourseEnrollments: React.FC = () => {
   const availableStudents = useMemo(
     () => [...students]
       .filter((student) => !enrolledStudentIds.has(String(student.id)))
-      .sort((left, right) => getUserDisplayName(left).localeCompare(getUserDisplayName(right))),
+      .sort((left, right) => getStudentEnrollmentLabel(left).localeCompare(getStudentEnrollmentLabel(right))),
     [enrolledStudentIds, students],
   );
 
@@ -723,7 +740,7 @@ const CourseEnrollments: React.FC = () => {
                 <option value="">{selectedCourseId ? 'Select student to enroll' : 'Pick a course first'}</option>
                 {availableStudents.map((student) => (
                   <option key={String(student.id)} value={String(student.id)}>
-                    {`${getUserDisplayName(student)} (${student.email})`}
+                    {getStudentEnrollmentLabel(student)}
                   </option>
                 ))}
               </select>

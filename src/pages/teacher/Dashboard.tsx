@@ -12,8 +12,17 @@ import { courseApi, examApi, resultApi, type Exam, type TeacherResultRow } from 
 import { useAuth } from '../../contexts';
 import type { NavItem } from '../../layout/DashboardLayout';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, getCourseName, normalizeExamStatus } from '../../utils/queryme';
+import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
 import './TeacherPages.css';
+
+interface RecentStudentActivity {
+  studentId: string;
+  studentName: string;
+  submissionCount: number;
+  latestSubmittedAt: string | null;
+}
+
+const getSubmissionTimestamp = (submittedAt?: string) => new Date(submittedAt || 0).getTime();
 
 const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -65,8 +74,9 @@ const TeacherDashboardHome: React.FC = () => {
     drafts: 0,
     submissions: 0,
   });
-  const [recentSubmissions, setRecentSubmissions] = useState<TeacherResultRow[]>([]);
+  const [submissionRows, setSubmissionRows] = useState<TeacherResultRow[]>([]);
   const [courseExams, setCourseExams] = useState<Exam[]>([]);
+  const [courseNamesById, setCourseNamesById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,6 +95,16 @@ const TeacherDashboardHome: React.FC = () => {
       try {
         const courses = await courseApi.getCourses(controller.signal);
         const teacherCourses = filterCoursesByTeacher(courses, user.id);
+        const nextCourseNamesById = teacherCourses.reduce<Record<string, string>>((acc, course) => {
+          const id = String(course.id || '');
+          const name = course.name?.trim();
+
+          if (id && name) {
+            acc[id] = name;
+          }
+
+          return acc;
+        }, {});
         const examLists = await Promise.all(
           teacherCourses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [] as Exam[])),
         );
@@ -102,8 +122,7 @@ const TeacherDashboardHome: React.FC = () => {
 
         const submissionRows = dashboards
           .flat()
-          .sort((left, right) => new Date(right.submittedAt || 0).getTime() - new Date(left.submittedAt || 0).getTime())
-          .slice(0, 5);
+          .sort((left, right) => getSubmissionTimestamp(right.submittedAt) - getSubmissionTimestamp(left.submittedAt));
 
         if (!controller.signal.aborted) {
           setStats({
@@ -112,8 +131,9 @@ const TeacherDashboardHome: React.FC = () => {
             drafts: exams.filter((exam) => normalizeExamStatus(exam.status) === 'DRAFT').length,
             submissions: dashboards.flat().length,
           });
-          setRecentSubmissions(submissionRows);
+          setSubmissionRows(submissionRows);
           setCourseExams(exams.slice(0, 6));
+          setCourseNamesById(nextCourseNamesById);
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -130,8 +150,36 @@ const TeacherDashboardHome: React.FC = () => {
     return () => controller.abort();
   }, [user]);
 
+  const recentStudents = useMemo<RecentStudentActivity[]>(() => {
+    const grouped = new Map<string, RecentStudentActivity>();
+
+    submissionRows.forEach((row) => {
+      const studentId = String(row.studentId || 'Unknown');
+
+      if (!grouped.has(studentId)) {
+        grouped.set(studentId, {
+          studentId,
+          studentName: row.studentName || studentId,
+          submissionCount: 1,
+          latestSubmittedAt: row.submittedAt || null,
+        });
+        return;
+      }
+
+      const existing = grouped.get(studentId);
+      if (existing) {
+        existing.submissionCount += 1;
+      }
+    });
+
+    return Array.from(grouped.values()).slice(0, 5);
+  }, [submissionRows]);
+
   const averageScore = useMemo(() => {
-    const validRows = recentSubmissions.filter((row) => typeof row.score === 'number' && typeof row.maxScore === 'number' && row.maxScore > 0);
+    const validRows = submissionRows
+      .slice(0, 5)
+      .filter((row) => typeof row.score === 'number' && typeof row.maxScore === 'number' && row.maxScore > 0);
+
     if (validRows.length === 0) {
       return 0;
     }
@@ -139,7 +187,11 @@ const TeacherDashboardHome: React.FC = () => {
     return Math.round(
       validRows.reduce((sum, row) => sum + ((row.score || 0) / (row.maxScore || 1)) * 100, 0) / validRows.length,
     );
-  }, [recentSubmissions]);
+  }, [submissionRows]);
+
+  const getDashboardCourseName = (exam: Exam): string => (
+    exam.course?.name?.trim() || courseNamesById[String(exam.courseId)] || ''
+  );
 
   if (loading) {
     return <div style={{ padding: '24px' }}>Loading teacher dashboard...</div>;
@@ -174,29 +226,29 @@ const TeacherDashboardHome: React.FC = () => {
       <div className="td-lower-grid">
         <div className="content-card">
           <div className="content-card-header">
-            <h2>Recent Submissions</h2>
+            <h2>Recent Students</h2>
             <Link to="/teacher/results" className="td-see-all">See all →</Link>
           </div>
           <div>
-            {recentSubmissions.map((submission, index) => (
-              <div key={`${submission.sessionId}-${submission.questionId}-${index}`} className="td-activity-row">
-                <div className="td-activity-avatar">{(submission.studentName || '?')[0]}</div>
+            {recentStudents.map((student) => (
+              <div key={student.studentId} className="td-activity-row">
+                <div className="td-activity-avatar">{student.studentName.charAt(0).toUpperCase() || '?'}</div>
                 <div className="td-activity-info">
-                  <span className="td-activity-name">{submission.studentName || submission.studentId}</span>
-                  <span className="td-activity-exam">{submission.questionPrompt || submission.questionId}</span>
+                  <span className="td-activity-name">{student.studentName}</span>
+                  <span className="td-activity-exam">Latest submission received</span>
                 </div>
                 <div className="td-activity-meta">
                   <span className="td-activity-score">
-                    {submission.score ?? 0}/{submission.maxScore ?? 0}
+                    {student.submissionCount} total
                   </span>
                   <span className="td-activity-time">
-                    {submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : 'N/A'}
+                    {student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}
                   </span>
                 </div>
               </div>
             ))}
-            {recentSubmissions.length === 0 && (
-              <div style={{ padding: '16px 0', color: '#666' }}>Recent graded submissions will appear here.</div>
+            {recentStudents.length === 0 && (
+              <div style={{ padding: '16px 0', color: '#666' }}>Students with recent submissions will appear here.</div>
             )}
           </div>
         </div>
@@ -207,19 +259,23 @@ const TeacherDashboardHome: React.FC = () => {
             <Link to="/teacher/exams" className="td-see-all">Manage →</Link>
           </div>
           <div style={{ padding: '8px 0' }}>
-            {courseExams.map((exam) => (
-              <div key={String(exam.id)} className="td-draft-row">
-                <div className="td-draft-info">
-                  <span className="td-draft-title">{exam.title}</span>
-                  <span className="td-draft-course">{getCourseName(exam.course, exam.courseId)}</span>
+            {courseExams.map((exam) => {
+              const courseName = getDashboardCourseName(exam);
+
+              return (
+                <div key={String(exam.id)} className="td-draft-row">
+                  <div className="td-draft-info">
+                    <span className="td-draft-title">{exam.title}</span>
+                    {courseName ? <span className="td-draft-course">{courseName}</span> : null}
+                  </div>
+                  <div className="td-draft-right">
+                    <span className={`td-draft-badge ${normalizeExamStatus(exam.status) === 'PUBLISHED' ? 'td-badge-upcoming' : 'td-badge-draft'}`}>
+                      {normalizeExamStatus(exam.status) || 'DRAFT'}
+                    </span>
+                  </div>
                 </div>
-                <div className="td-draft-right">
-                  <span className={`td-draft-badge ${normalizeExamStatus(exam.status) === 'PUBLISHED' ? 'td-badge-upcoming' : 'td-badge-draft'}`}>
-                    {normalizeExamStatus(exam.status) || 'DRAFT'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {courseExams.length === 0 && (
               <div style={{ padding: '16px 0', color: '#666' }}>Create your first course exam to populate this panel.</div>
             )}
