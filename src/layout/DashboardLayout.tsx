@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { sessionApi, type Session } from '../api';
+import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../contexts';
+import { extractErrorMessage } from '../utils/errorUtils';
+import { isSessionComplete } from '../utils/queryme';
 import logoImg from '../assets/logo.png';
 import './DashboardLayout.css';
 
@@ -19,8 +23,10 @@ interface DashboardLayoutProps {
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, portalTitle, accentColor = '#6a3cb0' }) => {
   const { user, logout } = useAuth();
+  const { confirm, showToast } = useToast();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isProcessingLogout, setIsProcessingLogout] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
@@ -35,11 +41,87 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
     }
   }, [isDarkMode]);
 
-  const handleAuthAction = () => {
-    if (user) {
-      logout();
+  const submitActiveSessions = async (activeSessions: Session[]): Promise<boolean> => {
+    if (activeSessions.length === 0) {
+      return true;
     }
-    navigate('/auth');
+
+    const submissions = await Promise.allSettled(
+      activeSessions.map((activeSession) => sessionApi.submitSession(String(activeSession.id))),
+    );
+
+    const failedSubmissions = submissions.filter((result) => result.status === 'rejected').length;
+
+    if (failedSubmissions > 0) {
+      showToast(
+        'error',
+        'Could not logout safely',
+        'We could not auto-submit your active exam session. Please return to the exam and submit before logging out.',
+      );
+      return false;
+    }
+
+    showToast(
+      'warning',
+      'Exam submitted',
+      'Your active exam session was automatically submitted before logout.',
+    );
+    return true;
+  };
+
+  const handleAuthAction = async () => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    if (isProcessingLogout) {
+      return;
+    }
+
+    let activeStudentSessions: Session[] = [];
+    let logoutMessage = 'Are you sure you want to logout from QueryMe?';
+
+    if (user.role === 'STUDENT') {
+      try {
+        const studentSessions = await sessionApi.getSessionsByStudent(user.id);
+        activeStudentSessions = studentSessions.filter((candidate) => !isSessionComplete(candidate));
+      } catch (err) {
+        showToast('error', 'Logout check failed', extractErrorMessage(err, 'Failed to verify active exam sessions.'));
+        return;
+      }
+
+      if (activeStudentSessions.length > 0) {
+        logoutMessage = 'You are currently attempting an exam. If you continue, your session will terminate and be submitted automatically.';
+      }
+    }
+
+    const shouldLogout = await confirm({
+      title: 'Confirm Logout',
+      message: logoutMessage,
+      confirmLabel: 'Yes, Logout',
+      danger: true,
+    });
+
+    if (!shouldLogout) {
+      return;
+    }
+
+    setIsProcessingLogout(true);
+
+    try {
+      if (activeStudentSessions.length > 0) {
+        const autoSubmitComplete = await submitActiveSessions(activeStudentSessions);
+        if (!autoSubmitComplete) {
+          return;
+        }
+      }
+
+      logout();
+      navigate('/auth');
+    } finally {
+      setIsProcessingLogout(false);
+    }
   };
 
   const getInitials = (name: string) => {
@@ -119,9 +201,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
         <div className="dash-sidebar-footer">
           <button
             className="dash-logout-btn"
-            onClick={handleAuthAction}
+            onClick={() => void handleAuthAction()}
             title={user ? 'Logout' : 'Sign In'}
             id="logout-btn"
+            disabled={isProcessingLogout}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
