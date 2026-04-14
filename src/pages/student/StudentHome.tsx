@@ -7,7 +7,8 @@ import {
   formatDateTime,
   getCourseName,
   getExamTimeLimit,
-  isExamPublished,
+  isSessionComplete,
+  normalizeExamStatus,
 } from '../../utils/queryme';
 
 interface UpcomingExamItem {
@@ -16,6 +17,10 @@ interface UpcomingExamItem {
   course: string;
   duration: string;
   visibilityMode: string;
+  actionLabel: string;
+  actionDisabled: boolean;
+  actionState: 'START' | 'REATTEMPT' | 'ATTEMPTED' | 'CLOSED';
+  attemptsSummary: string;
 }
 
 interface RecentResultItem {
@@ -61,15 +66,64 @@ const StudentHome: React.FC = () => {
           return;
         }
 
+        const completedAttemptsByExam = sessions.reduce<Record<string, number>>((accumulator, session) => {
+          if (!isSessionComplete(session)) {
+            return accumulator;
+          }
+
+          const examId = String(session.examId);
+          accumulator[examId] = (accumulator[examId] || 0) + 1;
+          return accumulator;
+        }, {});
+
         setUpcomingExams(
           publishedExams
-            .filter(isExamPublished)
             .map((exam) => ({
               id: String(exam.id),
               title: exam.title,
               course: getCourseName(exam.course, exam.courseId),
               duration: getExamTimeLimit(exam) ? `${getExamTimeLimit(exam)} min` : 'No limit',
               visibilityMode: String(exam.visibilityMode || 'N/A'),
+              ...(() => {
+                const examId = String(exam.id);
+                const attemptsUsed = completedAttemptsByExam[examId] || 0;
+                const maxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
+                const status = normalizeExamStatus(exam.status);
+
+                if (status === 'CLOSED') {
+                  return {
+                    actionLabel: 'Closed',
+                    actionDisabled: true,
+                    actionState: 'CLOSED' as const,
+                    attemptsSummary: `Attempts: ${Math.min(attemptsUsed, maxAttempts)}/${maxAttempts}`,
+                  };
+                }
+
+                if (attemptsUsed <= 0) {
+                  return {
+                    actionLabel: 'Start',
+                    actionDisabled: false,
+                    actionState: 'START' as const,
+                    attemptsSummary: `Attempts: 0/${maxAttempts}`,
+                  };
+                }
+
+                if (attemptsUsed < maxAttempts) {
+                  return {
+                    actionLabel: 'Re-attempt',
+                    actionDisabled: false,
+                    actionState: 'REATTEMPT' as const,
+                    attemptsSummary: `Attempts: ${attemptsUsed}/${maxAttempts}`,
+                  };
+                }
+
+                return {
+                  actionLabel: 'Attempted',
+                  actionDisabled: true,
+                  actionState: 'ATTEMPTED' as const,
+                  attemptsSummary: `Attempts: ${maxAttempts}/${maxAttempts}`,
+                };
+              })(),
             })),
         );
 
@@ -161,6 +215,42 @@ const StudentHome: React.FC = () => {
     return 'Good evening';
   };
 
+  const getActionButtonClass = (state: UpcomingExamItem['actionState']) => {
+    if (state === 'START') {
+      return 'btn btn-primary btn-sm';
+    }
+
+    return 'btn btn-secondary btn-sm';
+  };
+
+  const getActionButtonStyle = (state: UpcomingExamItem['actionState']): React.CSSProperties | undefined => {
+    if (state === 'REATTEMPT') {
+      return {
+        background: '#ddf4ff',
+        borderColor: '#90cdf4',
+        color: '#1e3a8a',
+      };
+    }
+
+    if (state === 'ATTEMPTED') {
+      return {
+        background: '#f3f4f6',
+        borderColor: '#d1d5db',
+        color: '#6b7280',
+      };
+    }
+
+    if (state === 'CLOSED') {
+      return {
+        background: '#fee2e2',
+        borderColor: '#fca5a5',
+        color: '#991b1b',
+      };
+    }
+
+    return undefined;
+  };
+
   if (loading) {
     return (
       <div>
@@ -242,9 +332,17 @@ const StudentHome: React.FC = () => {
                       <span className="badge badge-gray">{exam.visibilityMode}</span>
                     </td>
                     <td>
-                      <button className="btn btn-primary btn-sm" onClick={() => navigate(`/student/exam-session/${exam.id}`)}>
-                        Start
-                      </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                        <button
+                          className={getActionButtonClass(exam.actionState)}
+                          style={getActionButtonStyle(exam.actionState)}
+                          onClick={() => navigate(`/student/exam-session/${exam.id}`)}
+                          disabled={exam.actionDisabled}
+                        >
+                          {exam.actionLabel}
+                        </button>
+                        <span style={{ fontSize: '11px', color: '#888' }}>{exam.attemptsSummary}</span>
+                      </div>
                     </td>
                   </tr>
                 ))}
