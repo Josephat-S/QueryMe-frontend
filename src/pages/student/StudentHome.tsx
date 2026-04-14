@@ -189,7 +189,6 @@ const StudentHome: React.FC = () => {
     <div>
       <div className="page-header">
         <h1>{getGreeting()}, {user?.name?.split(' ')[0] || 'Student'}</h1>
-        <p>Your exam feed is now connected to live backend data.</p>
       </div>
 
       <div className="stat-grid">
