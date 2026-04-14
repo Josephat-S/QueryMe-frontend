@@ -1,36 +1,96 @@
-import React, { useEffect, useState } from 'react';
-import { courseApi, examApi, sandboxApi, type Exam } from '../../api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { courseApi, examApi, sandboxApi, userApi, type Exam, type PlatformUser } from '../../api';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { getCourseName, normalizeExamStatus } from '../../utils/queryme';
+import { getCourseName, getUserDisplayName, normalizeExamStatus } from '../../utils/queryme';
+
+interface SearchOption {
+  id: string;
+  label: string;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const getIdentifierCandidate = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return undefined;
+};
+
+const resolveBackendIdentifier = (source: Partial<Exam> | Partial<PlatformUser>): string => {
+  const record = source as Record<string, unknown>;
+  const candidateKeys = ['uuid', 'examUuid', 'studentUuid', 'userUuid', 'publicId', 'sandboxUuid', 'sandboxId', 'id'];
+
+  for (const key of candidateKeys) {
+    const candidate = getIdentifierCandidate(record[key]);
+
+    if (!candidate) {
+      continue;
+    }
+
+    if (UUID_PATTERN.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  for (const key of candidateKeys) {
+    const candidate = getIdentifierCandidate(record[key]);
+
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return '';
+};
 
 const SystemSettings: React.FC = () => {
   const { showToast } = useToast();
   const [exams, setExams] = useState<Exam[]>([]);
+  const [coursesById, setCoursesById] = useState<Record<string, string>>({});
+  const [students, setStudents] = useState<PlatformUser[]>([]);
   const [sandboxExamId, setSandboxExamId] = useState('');
   const [sandboxStudentId, setSandboxStudentId] = useState('');
+  const [sandboxExamSearch, setSandboxExamSearch] = useState('');
+  const [sandboxStudentSearch, setSandboxStudentSearch] = useState('');
   const [sandboxInfo, setSandboxInfo] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
+  const [examActionError, setExamActionError] = useState<string | null>(null);
 
-  const loadExams = async (signal?: AbortSignal) => {
+  const loadControls = async (signal?: AbortSignal) => {
     const courses = await courseApi.getCourses(signal);
+    setCoursesById(
+      courses.reduce<Record<string, string>>((accumulator, course) => {
+        accumulator[String(course.id)] = course.name;
+        return accumulator;
+      }, {}),
+    );
+
     const examLists = await Promise.all(
       courses.map((course) => examApi.getExamsByCourse(String(course.id), signal).catch(() => [] as Exam[])),
     );
     setExams(examLists.flat());
+    setStudents(await userApi.getStudents(signal).catch(() => [] as PlatformUser[]));
   };
 
   useEffect(() => {
     const controller = new AbortController();
 
     setLoading(true);
-    setError(null);
+    setLoadError(null);
 
-    void loadExams(controller.signal)
+    void loadControls(controller.signal)
       .catch((err) => {
         if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load administrative exam controls.'));
+          setLoadError(extractErrorMessage(err, 'Unable to load system controls right now.'));
         }
       })
       .finally(() => {
@@ -43,7 +103,7 @@ const SystemSettings: React.FC = () => {
   }, []);
 
   const runExamAction = async (examId: string, action: 'publish' | 'unpublish' | 'close' | 'delete') => {
-    setError(null);
+    setExamActionError(null);
 
     try {
       if (action === 'publish') {
@@ -56,42 +116,100 @@ const SystemSettings: React.FC = () => {
         await examApi.deleteExam(examId);
       }
 
-      await loadExams();
+      await loadControls();
       showToast('success', 'Administrative action complete', `Exam action "${action}" completed successfully.`);
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to complete the requested exam action.'));
+      setExamActionError(extractErrorMessage(err, `Could not ${action} this exam. Please try again.`));
     }
   };
 
+  const examOptions = useMemo<SearchOption[]>(() => (
+    exams.map((exam) => ({
+      id: resolveBackendIdentifier(exam),
+      label: `${exam.title} · ${coursesById[String(exam.courseId)] || getCourseName(exam.course) || 'Course'}`,
+    }))
+      .filter((option) => Boolean(option.id))
+  ), [coursesById, exams]);
+
+  const studentOptions = useMemo<SearchOption[]>(() => (
+    students.map((student) => ({
+      id: resolveBackendIdentifier(student),
+      label: (() => {
+        const email = typeof student.email === 'string' ? student.email.trim() : '';
+        const displayName = getUserDisplayName(student);
+
+        if (email && displayName && displayName !== 'Unknown User') {
+          return `${email} · ${displayName}`;
+        }
+
+        if (email) {
+          return email;
+        }
+
+        if (displayName && displayName !== 'Unknown User') {
+          return displayName;
+        }
+
+        return 'Student';
+      })(),
+    }))
+      .filter((option) => Boolean(option.id))
+  ), [students]);
+
+  const filteredExamOptions = useMemo(
+    () => examOptions.filter((option) => option.label.toLowerCase().includes(sandboxExamSearch.toLowerCase())),
+    [examOptions, sandboxExamSearch],
+  );
+
+  const filteredStudentOptions = useMemo(
+    () => studentOptions.filter((option) => option.label.toLowerCase().includes(sandboxStudentSearch.toLowerCase())),
+    [sandboxStudentSearch, studentOptions],
+  );
+
+  const selectExam = (option: SearchOption) => {
+    setSandboxExamSearch(option.label);
+    setSandboxExamId(option.id);
+  };
+
+  const selectStudent = (option: SearchOption) => {
+    setSandboxStudentSearch(option.label);
+    setSandboxStudentId(option.id);
+  };
+
+  const selectedExamLabel = examOptions.find((option) => option.id === sandboxExamId)?.label || '';
+  const selectedStudentLabel = studentOptions.find((option) => option.id === sandboxStudentId)?.label || '';
+
   const inspectSandbox = async () => {
     if (!sandboxExamId || !sandboxStudentId) {
+      setSandboxError('Please select both exam and student before inspecting sandbox details.');
       return;
     }
 
-    setError(null);
+    setSandboxError(null);
     setSandboxInfo('');
 
     try {
       const sandbox = await sandboxApi.getSandbox(sandboxExamId, sandboxStudentId);
       setSandboxInfo(JSON.stringify(sandbox, null, 2));
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to load sandbox details.'));
+      setSandboxError(extractErrorMessage(err, 'Unable to load sandbox details for this selection.'));
     }
   };
 
   const destroySandbox = async () => {
     if (!sandboxExamId || !sandboxStudentId) {
+      setSandboxError('Please select both exam and student before deleting sandbox.');
       return;
     }
 
-    setError(null);
+    setSandboxError(null);
 
     try {
       await sandboxApi.deleteSandbox(sandboxExamId, sandboxStudentId);
       setSandboxInfo('Sandbox deleted successfully.');
       showToast('success', 'Sandbox deleted', 'The selected sandbox was removed.');
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to delete the selected sandbox.'));
+      setSandboxError(extractErrorMessage(err, 'Unable to delete sandbox for this selection.'));
     }
   };
 
@@ -106,41 +224,99 @@ const SystemSettings: React.FC = () => {
         <p>Administrative controls backed by real exam and sandbox management endpoints.</p>
       </div>
 
-      {error && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{error}</div>}
+      {loadError && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{loadError}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '22px' }}>
-        <div className="content-card">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '22px' }}>
+        <div className="content-card" style={{ gridColumn: '1 / -1' }}>
           <div className="content-card-header">
             <h2>Sandbox Inspector</h2>
           </div>
           <div className="content-card-body">
             <div style={{ display: 'grid', gap: '12px' }}>
-              <input className="form-input" value={sandboxExamId} onChange={(event) => setSandboxExamId(event.target.value)} placeholder="Exam ID" />
-              <input className="form-input" value={sandboxStudentId} onChange={(event) => setSandboxStudentId(event.target.value)} placeholder="Student ID" />
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn btn-secondary" onClick={() => void inspectSandbox()}>Inspect</button>
-                <button className="btn btn-secondary" onClick={() => void destroySandbox()}>Delete Sandbox</button>
+              <div>
+                <input
+                  className="form-input"
+                  value={sandboxExamSearch}
+                  onChange={(event) => {
+                    setSandboxExamSearch(event.target.value);
+                    setSandboxExamId('');
+                  }}
+                  placeholder="Search exam by name"
+                />
+                <select
+                  className="form-input"
+                  style={{ marginTop: '8px' }}
+                  value={sandboxExamId}
+                  onChange={(event) => {
+                    const selected = filteredExamOptions.find((option) => option.id === event.target.value);
+                    if (selected) {
+                      selectExam(selected);
+                    } else {
+                      setSandboxExamId('');
+                    }
+                  }}
+                >
+                  <option value="">Select exam</option>
+                  {filteredExamOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                  Selected exam: {selectedExamLabel || 'None'}
+                </div>
               </div>
+              <div>
+                <input
+                  className="form-input"
+                  value={sandboxStudentSearch}
+                  onChange={(event) => {
+                    setSandboxStudentSearch(event.target.value);
+                    setSandboxStudentId('');
+                  }}
+                  placeholder="Search student by email"
+                />
+                <select
+                  className="form-input"
+                  style={{ marginTop: '8px' }}
+                  value={sandboxStudentId}
+                  onChange={(event) => {
+                    const selected = filteredStudentOptions.find((option) => option.id === event.target.value);
+                    if (selected) {
+                      selectStudent(selected);
+                    } else {
+                      setSandboxStudentId('');
+                    }
+                  }}
+                >
+                  <option value="">Select student</option>
+                  {filteredStudentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                  Selected student: {selectedStudentLabel || 'None'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn btn-secondary" onClick={() => void inspectSandbox()} disabled={!sandboxExamId || !sandboxStudentId}>Inspect</button>
+                <button className="btn btn-secondary" onClick={() => void destroySandbox()} disabled={!sandboxExamId || !sandboxStudentId}>Delete Sandbox</button>
+              </div>
+              {sandboxError && (
+                <div style={{ color: '#e53e3e', fontSize: '12px' }}>{sandboxError}</div>
+              )}
               <textarea className="form-input" value={sandboxInfo} readOnly style={{ minHeight: '220px', fontFamily: 'monospace' }} />
             </div>
           </div>
         </div>
 
-        <div className="content-card">
-          <div className="content-card-header">
-            <h2>Runtime Notes</h2>
-          </div>
-          <div className="content-card-body">
-            <p style={{ fontSize: '13px', color: '#666', lineHeight: 1.7 }}>
-              The backend documentation available to the frontend exposes operational controls for exams and sandboxes, but not direct mutation APIs for JVM settings, query engine blocklists, or log streaming. This screen therefore limits itself to the secure controls the backend actually publishes.
-            </p>
-          </div>
-        </div>
 
         <div className="content-card" style={{ gridColumn: '1 / -1' }}>
           <div className="content-card-header">
             <h2>Global Exam Administration</h2>
           </div>
+          {examActionError && (
+            <div style={{ padding: '0 24px 12px', color: '#e53e3e', fontSize: '12px' }}>{examActionError}</div>
+          )}
           <div className="content-card-body" style={{ padding: 0, overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
@@ -155,8 +331,8 @@ const SystemSettings: React.FC = () => {
               <tbody>
                 {exams.map((exam) => (
                   <tr key={String(exam.id)}>
-                    <td>{exam.title}</td>
-                    <td>{getCourseName(exam.course, exam.courseId)}</td>
+                    <td>{exam.title?.trim() || 'Untitled Exam'}</td>
+                    <td>{coursesById[String(exam.courseId)] || getCourseName(exam.course) || 'Unknown Course'}</td>
                     <td>{normalizeExamStatus(exam.status) || 'N/A'}</td>
                     <td>{String(exam.visibilityMode || 'N/A')}</td>
                     <td>

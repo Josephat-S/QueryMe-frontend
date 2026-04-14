@@ -1,6 +1,6 @@
 /* eslint-disable react-x/no-array-index-key */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { examApi, questionApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse, type Session } from '../../api';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
@@ -48,7 +48,7 @@ const ExamSession: React.FC = () => {
 
     const loadSession = async () => {
       if (!examId || !user) {
-        setError('A valid exam session requires both an exam and a signed-in student.');
+        setError('To access the editor, you need to start the exam first.');
         setLoading(false);
         return;
       }
@@ -260,6 +260,11 @@ const ExamSession: React.FC = () => {
       <div className="exam-session">
         <div style={{ textAlign: 'center', padding: '40px', color: 'red' }}>
           <div>{error || 'This exam session is unavailable.'}</div>
+          <div style={{ marginTop: '10px' }}>
+            <Link to="/student/exams" style={{ color: '#6a3cb0', fontWeight: 600, textDecoration: 'underline' }}>
+              Go to Available Exams
+            </Link>
+          </div>
           <button className="btn btn-primary" onClick={() => navigate('/student/exams')} style={{ marginTop: '18px' }}>
             Back to Exams
           </button>

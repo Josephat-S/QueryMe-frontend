@@ -15,6 +15,18 @@ const Reports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const visibleMetrics = useMemo(
+    () => (selectedCourseId === 'ALL'
+      ? metrics
+      : metrics.filter((metric) => String(metric.course.id) === selectedCourseId)),
+    [metrics, selectedCourseId],
+  );
+
+  const selectedCourseName = useMemo(
+    () => metrics.find((metric) => String(metric.course.id) === selectedCourseId)?.course.name,
+    [metrics, selectedCourseId],
+  );
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -58,12 +70,8 @@ const Reports: React.FC = () => {
   }, []);
 
   const activeMetrics = useMemo(() => {
-    const selected = selectedCourseId === 'ALL'
-      ? metrics
-      : metrics.filter((metric) => String(metric.course.id) === selectedCourseId);
-
-    const exams = selected.flatMap((metric) => metric.exams);
-    const resultRows = selected.flatMap((metric) => metric.resultRows);
+    const exams = visibleMetrics.flatMap((metric) => metric.exams);
+    const resultRows = visibleMetrics.flatMap((metric) => metric.resultRows);
     const averageScore = resultRows.length
       ? Math.round(
           resultRows.reduce((sum, row) => sum + (((row.score || 0) / (row.maxScore || 1)) * 100), 0) / resultRows.length,
@@ -76,11 +84,10 @@ const Reports: React.FC = () => {
 
     return {
       exams: exams.length,
-      resultRows: resultRows.length,
       averageScore,
       correctRate,
     };
-  }, [metrics, selectedCourseId]);
+  }, [visibleMetrics]);
 
   if (loading) {
     return <div style={{ padding: '24px' }}>Loading reports...</div>;
@@ -98,6 +105,10 @@ const Reports: React.FC = () => {
         </button>
       </div>
 
+      <div style={{ marginBottom: '12px', fontSize: '12px', color: '#666' }}>
+        Viewing: <strong>{selectedCourseId === 'ALL' ? 'All Courses' : selectedCourseName || 'Selected Course'}</strong>
+      </div>
+
       {error && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{error}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '22px' }}>
@@ -111,63 +122,59 @@ const Reports: React.FC = () => {
                 <tr>
                   <th>Course</th>
                   <th>Exams</th>
-                  <th>Result Rows</th>
                   <th>Average Score</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {metrics.map((metric) => {
+                {visibleMetrics.map((metric) => {
                   const averageScore = metric.resultRows.length
                     ? Math.round(
                         metric.resultRows.reduce((sum, row) => sum + (((row.score || 0) / (row.maxScore || 1)) * 100), 0) / metric.resultRows.length,
                       )
                     : 0;
 
+                  const isSelected = String(metric.course.id) === selectedCourseId;
+
                   return (
                     <tr key={String(metric.course.id)}>
                       <td style={{ fontWeight: 600 }}>{metric.course.name}</td>
                       <td>{metric.exams.length}</td>
-                      <td>{metric.resultRows.length}</td>
                       <td>{averageScore}%</td>
                       <td>
-                        <button className="btn btn-sm btn-secondary" onClick={() => setSelectedCourseId(String(metric.course.id))}>
-                          Inspect
+                        <button
+                          className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => setSelectedCourseId(String(metric.course.id))}
+                          disabled={isSelected}
+                        >
+                          {isSelected ? 'Selected' : 'Inspect'}
                         </button>
                       </td>
                     </tr>
                   );
                 })}
+                {visibleMetrics.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                      No courses match the current scope.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="content-card">
+        <div className="content-card" style={{ gridColumn: '1 / -1' }}>
           <div className="content-card-header">
             <h2>Key Indicators</h2>
           </div>
           <div className="content-card-body">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.exams}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Exams</div></div>
-              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.resultRows}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Result Rows</div></div>
               <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.averageScore}%</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Average Score</div></div>
               <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.correctRate}%</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Correct Rate</div></div>
             </div>
-          </div>
-        </div>
-
-        <div className="content-card">
-          <div className="content-card-header">
-            <h2>Active Scope</h2>
-          </div>
-          <div className="content-card-body">
-            <div style={{ fontSize: '14px' }}>
-              Viewing: <strong>{selectedCourseId === 'ALL' ? 'All Courses' : metrics.find((metric) => String(metric.course.id) === selectedCourseId)?.course.name || 'Selected Course'}</strong>
-            </div>
-            <p style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
-              These metrics are computed from the latest teacher dashboard rows returned by the backend, not from mock analytics.
-            </p>
           </div>
         </div>
       </div>
