@@ -14,6 +14,10 @@ export const extractErrorMessage = (
     if (data && typeof data === 'object') {
       const nestedData = data.data;
 
+      if (typeof data.Message === 'string' && data.Message.trim()) {
+        return data.Message;
+      }
+
       if (typeof data.message === 'string' && data.message.trim()) {
         return data.message;
       }
@@ -23,6 +27,10 @@ export const extractErrorMessage = (
       }
 
       if (nestedData && typeof nestedData === 'object') {
+        if ('Message' in nestedData && typeof nestedData.Message === 'string' && nestedData.Message.trim()) {
+          return nestedData.Message;
+        }
+
         if ('message' in nestedData && typeof nestedData.message === 'string' && nestedData.message.trim()) {
           return nestedData.message;
         }

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
+import { courseApi, examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { formatDateTime, getCourseName } from '../../utils/queryme';
+import { formatDateTime } from '../../utils/queryme';
 
 interface ResultRow {
   sessionId: string;
@@ -19,7 +19,7 @@ interface ResultRow {
 
 const MyResults: React.FC = () => {
   const { user } = useAuth();
-  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [activeResult, setActiveResult] = useState<ResultRow | null>(null);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,11 @@ const MyResults: React.FC = () => {
       setError(null);
 
       try {
-        const sessions = await sessionApi.getSessionsByStudent(user.id, controller.signal);
+        const [sessions, courses] = await Promise.all([
+          sessionApi.getSessionsByStudent(user.id, controller.signal),
+          courseApi.getCourses(controller.signal).catch(() => []),
+        ]);
+        const courseNamesById = new Map(courses.map((course) => [String(course.id), course.name]));
 
         const rows = await Promise.all(
           sessions.map(async (session) => {
@@ -46,12 +50,14 @@ const MyResults: React.FC = () => {
               examApi.getExam(String(session.examId), controller.signal).catch(() => null),
               resultApi.getSessionResult(String(session.id), controller.signal).catch(() => null),
             ]);
+            const courseNameFromExam = exam?.course?.name?.trim();
+            const courseNameFromMap = exam?.courseId ? courseNamesById.get(String(exam.courseId)) : undefined;
 
             return {
               sessionId: String(session.id),
               examId: String(session.examId),
               title: exam?.title || 'Exam',
-              course: getCourseName(exam?.course, exam?.courseId),
+              course: courseNameFromExam || courseNameFromMap || 'Unknown Course',
               submittedAt: session.submittedAt || session.startedAt || '',
               visible: sessionResult?.visible ?? false,
               totalScore: sessionResult?.totalScore ?? 0,
@@ -162,13 +168,11 @@ const MyResults: React.FC = () => {
                 <th>Submitted</th>
                 <th>Visibility</th>
                 <th>Score</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
               {results.map((result) => (
-                <React.Fragment key={result.sessionId}>
-                  <tr style={{ cursor: result.visible ? 'pointer' : 'default' }} onClick={() => result.visible && setExpandedSessionId(expandedSessionId === result.sessionId ? null : result.sessionId)}>
+                <tr key={result.sessionId}>
                     <td>
                       <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{result.title}</div>
                       <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{result.course}</div>
@@ -181,54 +185,35 @@ const MyResults: React.FC = () => {
                     </td>
                     <td>
                       {result.visible ? (
-                        <span style={{ fontWeight: 700, color: '#1a1a2e' }}>
-                          {result.totalScore}/{result.totalMaxScore}
-                        </span>
+                        <button
+                          type="button"
+                          aria-label={`View score details for ${result.title}`}
+                          onClick={() => setActiveResult(result)}
+                          style={{
+                            minWidth: '110px',
+                            justifyContent: 'center',
+                            padding: '6px 12px',
+                            borderRadius: '999px',
+                            border: '1px solid #c4b5fd',
+                            background: '#f5f3ff',
+                            color: '#6a3cb0',
+                            fontWeight: 700,
+                            textDecoration: 'underline',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          View {result.totalScore}/{result.totalMaxScore}
+                        </button>
                       ) : (
                         <span style={{ color: '#888' }}>Awaiting release</span>
                       )}
                     </td>
-                    <td>{result.visible ? '▶' : ''}</td>
                   </tr>
-                  {expandedSessionId === result.sessionId && (
-                    <tr>
-                      <td colSpan={5} style={{ background: '#fafafe', padding: '16px 24px' }}>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                          {result.questions.map((question, index) => (
-                            <div
-                              key={String(question.questionId)}
-                              style={{
-                                padding: '10px 16px',
-                                borderRadius: '10px',
-                                background: '#fff',
-                                border: '1px solid #e8e8ee',
-                                minWidth: '140px',
-                              }}
-                            >
-                              <div style={{ fontSize: '10px', fontWeight: 700, color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>
-                                Question {index + 1}
-                              </div>
-                              <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px' }}>{question.prompt}</div>
-                              <div style={{ fontSize: '12px', color: '#666' }}>
-                                Score: {question.score ?? 0}/{question.maxScore ?? 0}
-                              </div>
-                              <div style={{ fontSize: '12px', color: question.isCorrect ? '#38a169' : '#dd6b20', marginTop: '4px' }}>
-                                {question.isCorrect ? 'Correct' : 'Reviewed'}
-                              </div>
-                            </div>
-                          ))}
-                          {result.questions.length === 0 && (
-                            <div style={{ color: '#666' }}>No question breakdown was returned for this session.</div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
               ))}
               {results.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
                     No exam sessions have been recorded yet.
                   </td>
                 </tr>
@@ -237,6 +222,80 @@ const MyResults: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {activeResult && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.52)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(3px)',
+            padding: '20px',
+          }}
+          onClick={() => setActiveResult(null)}
+          role="presentation"
+        >
+          <div
+            className="content-card"
+            style={{ width: 'min(980px, 100%)', maxHeight: '85vh', overflow: 'hidden' }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="content-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ marginBottom: '4px' }}>{activeResult.title}</h2>
+                <div style={{ fontSize: '12px', color: '#666' }}>{activeResult.course}</div>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setActiveResult(null)}>
+                Close
+              </button>
+            </div>
+
+            <div className="content-card-body" style={{ overflowY: 'auto', maxHeight: 'calc(85vh - 96px)' }}>
+              <div style={{ marginBottom: '14px', fontSize: '13px', color: '#4a5568' }}>
+                Session score: <strong>{activeResult.totalScore}/{activeResult.totalMaxScore}</strong>
+              </div>
+
+              {activeResult.questions.length > 0 ? (
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  {activeResult.questions.map((question, index) => (
+                    <div
+                      key={String(question.questionId)}
+                      style={{
+                        border: '1px solid #e8e8ee',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                        background: '#fff',
+                      }}
+                    >
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#6a3cb0', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Question {index + 1}
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#1a1a2e', fontWeight: 600, marginBottom: '10px' }}>
+                        {question.prompt}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#4a5568', marginBottom: '8px' }}>
+                        <strong>Answered:</strong> {question.submittedQuery?.trim() || 'No answer submitted.'}
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="badge badge-gray">Scored: {question.score ?? 0}/{question.maxScore ?? 0}</span>
+                        <span className={`badge ${question.isCorrect ? 'badge-green' : 'badge-orange'}`}>
+                          {question.isCorrect ? 'Correct' : 'Reviewed'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: '#666' }}>No question breakdown was returned for this session.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

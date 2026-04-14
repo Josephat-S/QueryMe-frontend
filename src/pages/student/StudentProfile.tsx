@@ -1,8 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { userApi } from '../../api';
+import { sessionApi, userApi } from '../../api';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getInitials } from '../../utils/queryme';
+
+const isNumericId = (value?: string | null): value is string => Boolean(value && /^\d+$/.test(value));
+
+const toFriendlyProfileError = (error: unknown, fallback: string): string => {
+  const message = extractErrorMessage(error, fallback);
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('failed to convert value of type') || normalized.includes('required type') || normalized.includes('java.lang.long')) {
+    return 'Your profile could not be matched to a student record yet. Please contact your teacher or administrator.';
+  }
+
+  return message;
+};
 
 const StudentProfile: React.FC = () => {
   const { user } = useAuth();
@@ -14,6 +27,24 @@ const StudentProfile: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [studentProfileId, setStudentProfileId] = useState<string | null>(null);
+
+  const resolveStudentProfileId = async (signal?: AbortSignal): Promise<string | null> => {
+    if (!user) {
+      return null;
+    }
+
+    if (isNumericId(user.id)) {
+      return user.id;
+    }
+
+    const sessions = await sessionApi.getSessionsByStudent(user.id, signal).catch(() => []);
+    const fallbackId = sessions
+      .map((session) => String(session.studentId || ''))
+      .find((id) => isNumericId(id));
+
+    return fallbackId || null;
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -28,14 +59,26 @@ const StudentProfile: React.FC = () => {
       setError(null);
 
       try {
-        const profile = await userApi.getStudent(user.id, controller.signal);
+        const resolvedStudentId = await resolveStudentProfileId(controller.signal);
+
+        if (!resolvedStudentId) {
+          if (!controller.signal.aborted) {
+            setStudentProfileId(null);
+            setName(user.name);
+            setEmail(user.email);
+          }
+          return;
+        }
+
+        const profile = await userApi.getStudent(resolvedStudentId, controller.signal);
         if (!controller.signal.aborted) {
+          setStudentProfileId(resolvedStudentId);
           setName(String(profile.name || profile.fullName || user.name));
           setEmail(String(profile.email || user.email));
         }
       } catch (err) {
         if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Unable to load your student profile.'));
+          setError(toFriendlyProfileError(err, 'Unable to load your student profile.'));
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -70,7 +113,14 @@ const StudentProfile: React.FC = () => {
     setSuccess(null);
 
     try {
-      await userApi.updateStudent(user.id, {
+      const resolvedStudentId = studentProfileId || await resolveStudentProfileId();
+
+      if (!resolvedStudentId) {
+        setError('Your profile is not linked to a student record yet. Please contact your teacher or administrator.');
+        return;
+      }
+
+      await userApi.updateStudent(resolvedStudentId, {
         password: newPassword,
       });
 
@@ -78,7 +128,7 @@ const StudentProfile: React.FC = () => {
       setConfirmPassword('');
       setSuccess('Your password has been updated.');
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to update your profile.'));
+      setError(toFriendlyProfileError(err, 'Failed to update your profile.'));
     } finally {
       setSaving(false);
     }

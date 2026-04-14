@@ -1,19 +1,67 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { courseApi, examApi, sessionApi, type Session } from '../../api';
+import { courseApi, examApi, sessionApi, userApi, type Session } from '../../api';
 import { extractErrorMessage } from '../../utils/errorUtils';
+import { getUserDisplayName } from '../../utils/queryme';
 
 interface ActivityRow {
-  sessionId: string;
+  id: string;
+  event: 'EXAM_CREATED' | 'STUDENT_FINISHED';
   examTitle: string;
-  studentId: string;
-  status: string;
-  startedAt: string;
-  submittedAt: string;
+  actorName: string;
+  statusLabel: string;
+  occurredAt: string;
 }
+
+const ROWS_PER_PAGE = 8;
+
+const asRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+);
+
+const getText = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  return undefined;
+};
+
+const getKnownIdentifiers = (value: unknown): string[] => {
+  const record = asRecord(value);
+  const keys = ['id', 'uuid', 'userId', 'user_id', 'authUserId', 'auth_user_id', 'studentId', 'student_id', 'teacherId', 'teacher_id', 'publicId'];
+  const nestedUser = asRecord(record.user);
+
+  return [...keys, ...keys.map((key) => `user.${key}`)]
+    .map((key) => {
+      if (key.startsWith('user.')) {
+        return nestedUser[key.replace('user.', '')];
+      }
+
+      return record[key];
+    })
+    .map((candidate) => (typeof candidate === 'number' ? String(candidate) : getText(candidate)))
+    .filter((candidate): candidate is string => Boolean(candidate));
+};
+
+const getPossiblePersonName = (value: unknown): string | undefined => {
+  const record = asRecord(value);
+  const nestedUser = asRecord(record.user);
+  const keys = ['studentName', 'student_name', 'teacherName', 'teacher_name', 'name', 'fullName', 'full_name', 'createdByName', 'created_by_name'];
+
+  for (const key of keys) {
+    const candidate = getText(record[key]) || getText(nestedUser[key]);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+};
 
 const SystemLogs: React.FC = () => {
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,31 +73,104 @@ const SystemLogs: React.FC = () => {
       setError(null);
 
       try {
-        const courses = await courseApi.getCourses(controller.signal);
+        const [courses, teachers, students] = await Promise.all([
+          courseApi.getCourses(controller.signal),
+          userApi.getTeachers(controller.signal).catch(() => []),
+          userApi.getStudents(controller.signal).catch(() => []),
+        ]);
+        const courseById = new Map(courses.map((course) => [String(course.id), course]));
+
+        const teacherById = new Map<string, (typeof teachers)[number]>();
+        const studentById = new Map<string, (typeof students)[number]>();
+
+        teachers.forEach((teacher) => {
+          getKnownIdentifiers(teacher).forEach((identifier) => {
+            teacherById.set(identifier, teacher);
+          });
+        });
+
+        students.forEach((student) => {
+          getKnownIdentifiers(student).forEach((identifier) => {
+            studentById.set(identifier, student);
+          });
+        });
+
         const examLists = await Promise.all(
           courses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [])),
         );
         const exams = examLists.flat();
 
+        const createdEvents: ActivityRow[] = exams
+          .filter((exam) => Boolean(exam.createdAt))
+          .map((exam) => {
+            const examRecord = asRecord(exam);
+            const linkedCourse = courseById.get(String(exam.courseId));
+            const linkedCourseRecord = asRecord(linkedCourse);
+            const teacherFromExam = exam.teacher;
+            const teacherFromExamCourse = exam.course?.teacherId ? teacherById.get(String(exam.course.teacherId)) : undefined;
+            const teacherFromLinkedCourse = linkedCourse?.teacherId ? teacherById.get(String(linkedCourse.teacherId)) : undefined;
+            const examCreatedById = [
+              getText(examRecord.createdBy),
+              getText(examRecord.createdById),
+              getText(examRecord.created_by),
+              getText(examRecord.created_by_id),
+            ].find(Boolean);
+            const teacherFromCreatedBy = examCreatedById ? teacherById.get(examCreatedById) : undefined;
+            const directCreatorName = getPossiblePersonName(exam);
+            const creatorCandidates = [
+              directCreatorName,
+              getText(asRecord(exam.course).teacherName),
+              getText(linkedCourseRecord.teacherName),
+              getText(linkedCourseRecord.teacher_name),
+              getUserDisplayName(teacherFromCreatedBy),
+              getUserDisplayName(teacherFromExam),
+              getUserDisplayName(teacherFromExamCourse),
+              getUserDisplayName(teacherFromLinkedCourse),
+            ];
+            const creatorName = creatorCandidates.find((candidate) => candidate && candidate !== 'Unknown User') || 'Unknown Person';
+
+            return {
+              id: `exam-created-${String(exam.id)}-${String(exam.createdAt)}`,
+              event: 'EXAM_CREATED',
+              examTitle: exam.title || 'Untitled Exam',
+              actorName: creatorName === 'Unknown User' ? 'Unknown Person' : creatorName,
+              statusLabel: 'CREATED',
+              occurredAt: String(exam.createdAt),
+            };
+          });
+
         const sessionLists = await Promise.all(
           exams.map(async (exam) => {
             const sessions = await sessionApi.getSessionsByExam(String(exam.id), controller.signal).catch(() => [] as Session[]);
-            return sessions.map((session) => ({
-              sessionId: String(session.id),
-              examTitle: exam.title,
-              studentId: String(session.studentId),
-              status: session.isExpired ? 'EXPIRED' : session.isSubmitted || session.submittedAt ? 'SUBMITTED' : 'IN_PROGRESS',
-              startedAt: session.startedAt || '',
-              submittedAt: session.submittedAt || '',
-            } satisfies ActivityRow));
+
+            return sessions
+              .filter((session) => Boolean(session.submittedAt || session.isSubmitted))
+              .map((session) => {
+                const sessionRecord = asRecord(session);
+                const sessionStudentIdentifiers = [String(session.studentId), ...getKnownIdentifiers(sessionRecord)];
+                const matchedStudent = sessionStudentIdentifiers
+                  .map((identifier) => studentById.get(identifier))
+                  .find(Boolean);
+                const inlineName = getPossiblePersonName(sessionRecord);
+                const studentName = inlineName || getUserDisplayName(matchedStudent);
+
+                return {
+                  id: `session-finished-${String(session.id)}`,
+                  event: 'STUDENT_FINISHED',
+                  examTitle: exam.title || 'Untitled Exam',
+                  actorName: studentName === 'Unknown User' ? 'Unknown Person' : studentName,
+                  statusLabel: 'FINISHED',
+                  occurredAt: String(session.submittedAt || session.startedAt || ''),
+                } satisfies ActivityRow;
+              });
           }),
         );
 
         if (!controller.signal.aborted) {
           setRows(
-            sessionLists
-              .flat()
-              .sort((left, right) => new Date(right.startedAt || 0).getTime() - new Date(left.startedAt || 0).getTime()),
+            [...createdEvents, ...sessionLists.flat()]
+              .filter((row) => Boolean(row.occurredAt))
+              .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime()),
           );
         }
       } catch (err) {
@@ -68,9 +189,25 @@ const SystemLogs: React.FC = () => {
   }, []);
 
   const filteredRows = useMemo(
-    () => rows.filter((row) => `${row.examTitle} ${row.studentId} ${row.status}`.toLowerCase().includes(search.toLowerCase())),
+    () => rows.filter((row) => `${row.examTitle} ${row.actorName} ${row.statusLabel}`.toLowerCase().includes(search.toLowerCase())),
     [rows, search],
   );
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ROWS_PER_PAGE));
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE),
+    [filteredRows, page],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   if (loading) {
     return <div style={{ padding: '24px' }}>Loading operational activity...</div>;
@@ -89,35 +226,33 @@ const SystemLogs: React.FC = () => {
 
       <div className="content-card">
         <div className="content-card-header" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input className="form-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by exam, student, or status..." style={{ width: '260px' }} />
+          <input className="form-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by exam, person, or status..." style={{ width: '260px' }} />
           <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#666' }}>{filteredRows.length} entries</span>
         </div>
         <div className="content-card-body" style={{ padding: 0, overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>
-                <th>Session</th>
+                <th>Activity</th>
                 <th>Exam</th>
-                <th>Student</th>
+                <th>Person</th>
                 <th>Status</th>
-                <th>Started</th>
-                <th>Submitted</th>
+                <th>When</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.sessionId}>
-                  <td>{row.sessionId}</td>
+              {pagedRows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.event === 'EXAM_CREATED' ? 'Exam Created' : 'Student Finished Exam'}</td>
                   <td>{row.examTitle}</td>
-                  <td>{row.studentId}</td>
-                  <td><span className="badge badge-gray">{row.status}</span></td>
-                  <td>{row.startedAt ? new Date(row.startedAt).toLocaleString() : 'N/A'}</td>
-                  <td>{row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</td>
+                  <td>{row.actorName}</td>
+                  <td><span className="badge badge-gray">{row.statusLabel}</span></td>
+                  <td>{new Date(row.occurredAt).toLocaleString()}</td>
                 </tr>
               ))}
-              {filteredRows.length === 0 && (
+              {pagedRows.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
                     No operational activity matched the current search.
                   </td>
                 </tr>
@@ -125,6 +260,35 @@ const SystemLogs: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {filteredRows.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              Showing {Math.min((page - 1) * ROWS_PER_PAGE + 1, filteredRows.length)}-
+              {Math.min(page * ROWS_PER_PAGE, filteredRows.length)} of {filteredRows.length}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((previous) => Math.max(1, previous - 1))}
+              >
+                Previous
+              </button>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#4a5568' }}>
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn btn-secondary btn-sm"
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
