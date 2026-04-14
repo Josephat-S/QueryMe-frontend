@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { courseApi, examApi, type Course, type Exam } from '../../api';
+import { courseApi, examApi, questionApi, type Course, type Exam } from '../../api';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, getCourseName, normalizeExamStatus } from '../../utils/queryme';
+import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
 import './TeacherPages.css';
 
 interface ExamRow {
@@ -48,13 +48,39 @@ const ExamsList: React.FC = () => {
         .map((exam) => [String(exam.id), exam]),
     ).values()];
 
+    const courseNamesById = accessibleCourses.reduce<Record<string, string>>((acc, course) => {
+      const id = String(course.id || '');
+      const name = course.name?.trim();
+
+      if (id && name) {
+        acc[id] = name;
+      }
+
+      return acc;
+    }, {});
+
+    const questionCounts = await Promise.all(
+      uniqueExams.map(async (exam) => {
+        const examId = String(exam.id);
+
+        try {
+          const questions = await questionApi.getQuestions(examId, signal);
+          return [examId, questions.length] as const;
+        } catch {
+          return [examId, exam.questions?.length ?? 0] as const;
+        }
+      }),
+    );
+
+    const questionCountByExamId = new Map(questionCounts);
+
     const rows = uniqueExams
       .map((exam) => ({
         id: String(exam.id),
         title: exam.title,
-        course: getCourseName(exam.course, exam.courseId),
+        course: exam.course?.name?.trim() || courseNamesById[String(exam.courseId)] || 'Unknown Course',
         status: normalizeExamStatus(exam.status) || 'DRAFT',
-        questionsCount: exam.questions?.length ?? 0,
+        questionsCount: questionCountByExamId.get(String(exam.id)) ?? 0,
         maxAttempts: exam.maxAttempts ?? 1,
         visibilityMode: String(exam.visibilityMode || 'N/A'),
       }))
