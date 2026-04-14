@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
+import { courseApi, examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { formatDateTime } from '../../utils/queryme';
@@ -38,7 +38,11 @@ const MyResults: React.FC = () => {
       setError(null);
 
       try {
-        const sessions = await sessionApi.getSessionsByStudent(user.id, controller.signal);
+        const [sessions, courses] = await Promise.all([
+          sessionApi.getSessionsByStudent(user.id, controller.signal),
+          courseApi.getCourses(controller.signal).catch(() => []),
+        ]);
+        const courseNamesById = new Map(courses.map((course) => [String(course.id), course.name]));
 
         const rows = await Promise.all(
           sessions.map(async (session) => {
@@ -46,12 +50,14 @@ const MyResults: React.FC = () => {
               examApi.getExam(String(session.examId), controller.signal).catch(() => null),
               resultApi.getSessionResult(String(session.id), controller.signal).catch(() => null),
             ]);
+            const courseNameFromExam = exam?.course?.name?.trim();
+            const courseNameFromMap = exam?.courseId ? courseNamesById.get(String(exam.courseId)) : undefined;
 
             return {
               sessionId: String(session.id),
               examId: String(session.examId),
               title: exam?.title || 'Exam',
-              course: exam?.course?.name?.trim() || 'Unknown Course',
+              course: courseNameFromExam || courseNameFromMap || 'Unknown Course',
               submittedAt: session.submittedAt || session.startedAt || '',
               visible: sessionResult?.visible ?? false,
               totalScore: sessionResult?.totalScore ?? 0,
@@ -181,11 +187,23 @@ const MyResults: React.FC = () => {
                       {result.visible ? (
                         <button
                           type="button"
-                          className="btn btn-secondary btn-sm"
+                          aria-label={`View score details for ${result.title}`}
                           onClick={() => setActiveResult(result)}
-                          style={{ minWidth: '90px', justifyContent: 'center' }}
+                          style={{
+                            minWidth: '110px',
+                            justifyContent: 'center',
+                            padding: '6px 12px',
+                            borderRadius: '999px',
+                            border: '1px solid #c4b5fd',
+                            background: '#f5f3ff',
+                            color: '#6a3cb0',
+                            fontWeight: 700,
+                            textDecoration: 'underline',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
                         >
-                          {result.totalScore}/{result.totalMaxScore}
+                          View {result.totalScore}/{result.totalMaxScore}
                         </button>
                       ) : (
                         <span style={{ color: '#888' }}>Awaiting release</span>
