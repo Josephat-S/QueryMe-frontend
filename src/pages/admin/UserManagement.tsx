@@ -5,18 +5,25 @@ import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
 import type { PlatformUser, UserRole } from '../../types/queryme';
 
+const MANAGED_ROLES = ['TEACHER', 'STUDENT', 'GUEST'] as const;
+type ManagedUserRole = typeof MANAGED_ROLES[number];
+
 interface ManagedUser {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: ManagedUserRole;
 }
+
+const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
 const UserManagement: React.FC = () => {
   const { showToast } = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
-  const [filter, setFilter] = useState<'ALL' | UserRole>('ALL');
+  const [selectedRoles, setSelectedRoles] = useState<ManagedUserRole[]>([...MANAGED_ROLES]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,11 +32,10 @@ const UserManagement: React.FC = () => {
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
-  const [formRole, setFormRole] = useState<UserRole>('STUDENT');
+  const [formRole, setFormRole] = useState<ManagedUserRole>('STUDENT');
 
   const loadUsers = async (signal?: AbortSignal) => {
-    const [admins, teachers, students, guests] = await Promise.all([
-      userApi.getAdmins(signal).catch(() => [] as PlatformUser[]),
+    const [teachers, students, guests] = await Promise.all([
       userApi.getTeachers(signal).catch(() => [] as PlatformUser[]),
       userApi.getStudents(signal).catch(() => [] as PlatformUser[]),
       userApi.getGuests(signal).catch(() => [] as PlatformUser[]),
@@ -37,16 +43,17 @@ const UserManagement: React.FC = () => {
 
     setUsers(
       [
-        ...withPlatformUserRole(admins, 'ADMIN'),
         ...withPlatformUserRole(teachers, 'TEACHER'),
         ...withPlatformUserRole(students, 'STUDENT'),
         ...withPlatformUserRole(guests, 'GUEST'),
-      ].map((user) => ({
-        id: String(user.id),
-        name: String(user.name || user.fullName || user.email.split('@')[0]),
-        email: user.email,
-        role: getPlatformUserRole(user),
-      })),
+      ]
+        .filter((user) => getPlatformUserRole(user) !== 'ADMIN')
+        .map((user) => ({
+          id: String(user.id),
+          name: String(user.name || user.fullName || user.email.split('@')[0]),
+          email: user.email,
+          role: getPlatformUserRole(user) as ManagedUserRole,
+        })),
     );
   };
 
@@ -73,12 +80,36 @@ const UserManagement: React.FC = () => {
 
   const filteredUsers = useMemo(
     () => users.filter((user) => {
-      const matchesFilter = filter === 'ALL' || user.role === filter;
+      const matchesFilter = selectedRoles.includes(user.role);
       const matchesSearch = `${user.name} ${user.email}`.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesFilter && matchesSearch;
     }),
-    [filter, searchQuery, users],
+    [searchQuery, selectedRoles, users],
   );
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const paginatedUsers = useMemo(
+    () => filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, filteredUsers, pageSize],
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedRoles, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const toggleRole = (role: ManagedUserRole) => {
+    setSelectedRoles((currentRoles) => (
+      currentRoles.includes(role)
+        ? currentRoles.filter((item) => item !== role)
+        : [...currentRoles, role]
+    ));
+  };
 
   const openCreateModal = () => {
     setEditingUser(null);
@@ -149,13 +180,24 @@ const UserManagement: React.FC = () => {
       </div>
 
       <div className="content-card">
-        <div className="content-card-header" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {(['ALL', 'ADMIN', 'TEACHER', 'STUDENT', 'GUEST'] as const).map((value) => (
-            <button key={value} className={`btn btn-sm ${filter === value ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(value)}>
-              {value}
-            </button>
-          ))}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+        <div className="content-card-header" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {MANAGED_ROLES.map((value) => {
+              const active = selectedRoles.includes(value);
+
+              return (
+                <button
+                  key={value}
+                  className={`btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => toggleRole(value)}
+                  type="button"
+                >
+                  {value}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="text"
               placeholder="Search users..."
@@ -164,6 +206,18 @@ const UserManagement: React.FC = () => {
               onChange={(event) => setSearchQuery(event.target.value)}
               style={{ padding: '6px 14px', minWidth: '240px' }}
             />
+            <select
+              className="form-input"
+              value={pageSize}
+              onChange={(event) => setPageSize(Number(event.target.value) as typeof PAGE_SIZE_OPTIONS[number])}
+              style={{ padding: '6px 14px', minWidth: '120px' }}
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option} / page
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         {error && <div style={{ padding: '12px 24px', color: '#e53e3e' }}>{error}</div>}
@@ -173,19 +227,17 @@ const UserManagement: React.FC = () => {
               <tr>
                 <th>User Details</th>
                 <th>Role</th>
-                <th>User ID</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => (
+              {paginatedUsers.map((user) => (
                 <tr key={`${user.role}-${user.id}`}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{user.name}</div>
                     <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{user.email}</div>
                   </td>
                   <td><span className="badge badge-gray">{user.role}</span></td>
-                  <td>{user.id}</td>
                   <td>
                     <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(user)}>
                       Edit
@@ -193,15 +245,42 @@ const UserManagement: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {filteredUsers.length === 0 && (
+              {paginatedUsers.length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                  <td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
                     No users match the active filter.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Showing {filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-
+            {Math.min(currentPage * pageSize, filteredUsers.length)} of {filteredUsers.length}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((previous) => Math.max(1, previous - 1))}
+            >
+              Previous
+            </button>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#4a5568' }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 
@@ -239,10 +318,9 @@ const UserManagement: React.FC = () => {
               {!editingUser && (
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#888', marginBottom: '6px' }}>Role</label>
-                  <select className="form-input" value={formRole} onChange={(event) => setFormRole(event.target.value as UserRole)} style={{ width: '100%' }}>
+                  <select className="form-input" value={formRole} onChange={(event) => setFormRole(event.target.value as ManagedUserRole)} style={{ width: '100%' }}>
                     <option value="STUDENT">Student</option>
                     <option value="TEACHER">Teacher</option>
-                    <option value="ADMIN">Admin</option>
                     <option value="GUEST">Guest</option>
                   </select>
                 </div>
@@ -262,11 +340,7 @@ const UserManagement: React.FC = () => {
   );
 };
 
-const createNewUser = async (role: UserRole, payload: { fullName: string; email: string; password: string }) => {
-  if (role === 'ADMIN') {
-    await userApi.registerAdmin(payload);
-    return;
-  }
+const createNewUser = async (role: ManagedUserRole, payload: { fullName: string; email: string; password: string }) => {
   if (role === 'TEACHER') {
     await userApi.registerTeacher(payload);
     return;
@@ -280,13 +354,9 @@ const createNewUser = async (role: UserRole, payload: { fullName: string; email:
 
 const updateExistingUser = async (
   id: string,
-  role: UserRole,
+  role: ManagedUserRole,
   payload: { fullName?: string; email?: string; password?: string },
 ) => {
-  if (role === 'ADMIN') {
-    await userApi.updateAdmin(id, payload);
-    return;
-  }
   if (role === 'TEACHER') {
     await userApi.updateTeacher(id, payload);
     return;

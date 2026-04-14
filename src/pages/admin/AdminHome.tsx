@@ -1,14 +1,66 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { courseApi, examApi, resultApi, userApi, type Exam, type PlatformUser, type TeacherResultRow } from '../../api';
+import { courseApi, examApi, userApi, type Course, type Exam, type PlatformUser } from '../../api';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { getCourseName, getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
+import { getPlatformUserRole, getUserDisplayName, normalizeExamStatus, withPlatformUserRole } from '../../utils/queryme';
+
+interface AdminActivityRow {
+  id: string;
+  kind: 'PUBLISHED' | 'CLOSED';
+  examTitle: string;
+  courseName: string;
+  actorName: string;
+  occurredAt: string;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' ? value as Record<string, unknown> : {}
+);
+
+const getRecordValue = (record: Record<string, unknown>, keys: string[]): unknown => {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+const getTextValue = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  return undefined;
+};
+
+const getCourseTeacherName = (course: Course | undefined, usersById: Map<string, PlatformUser>): string => {
+  if (!course) {
+    return 'Teacher';
+  }
+
+  const courseRecord = asRecord(course);
+  const nestedTeacher = asRecord(courseRecord.teacher);
+  const teacherFromUsers = course.teacherId ? usersById.get(String(course.teacherId)) : undefined;
+
+  const candidate =
+    getTextValue(course.teacherName)
+    || getTextValue(getRecordValue(courseRecord, ['teacherName', 'teacher_name', 'teacherFullName', 'teacher_full_name']))
+    || getTextValue(getRecordValue(nestedTeacher, ['name', 'fullName', 'full_name']))
+    || getTextValue(getRecordValue(nestedTeacher, ['teacherName', 'teacher_name']))
+    || getUserDisplayName(teacherFromUsers)
+    || getTextValue(getRecordValue(courseRecord, ['teacherEmail', 'teacher_email']));
+
+  return candidate || 'Teacher';
+};
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
-  const [recentRows, setRecentRows] = useState<TeacherResultRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,9 +85,6 @@ const AdminHome: React.FC = () => {
         );
 
         const allExams = examLists.flat();
-        const dashboards = await Promise.all(
-          allExams.map((exam) => resultApi.getExamDashboard(String(exam.id), controller.signal).catch(() => [] as TeacherResultRow[])),
-        );
 
         if (!controller.signal.aborted) {
           setUsers([
@@ -44,13 +93,8 @@ const AdminHome: React.FC = () => {
             ...withPlatformUserRole(students, 'STUDENT'),
             ...withPlatformUserRole(guests, 'GUEST'),
           ]);
+          setCourses(courses);
           setExams(allExams);
-          setRecentRows(
-            dashboards
-              .flat()
-              .sort((left, right) => new Date(right.submittedAt || 0).getTime() - new Date(left.submittedAt || 0).getTime())
-              .slice(0, 6),
-          );
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -74,6 +118,48 @@ const AdminHome: React.FC = () => {
     guests: users.filter((user) => getPlatformUserRole(user) === 'GUEST').length,
   }), [users]);
 
+  const recentActivities = useMemo<AdminActivityRow[]>(() => {
+    const items: AdminActivityRow[] = [];
+    const courseById = new Map(courses.map((course) => [String(course.id), course]));
+    const userById = new Map(users.map((user) => [String(user.id), user]));
+
+    exams.forEach((exam) => {
+      const course = courseById.get(String(exam.courseId));
+      const courseName = getTextValue(course?.name) || getTextValue(asRecord(exam.course).name) || 'Unknown course';
+      const actorName = getCourseTeacherName(course, userById)
+        || getUserDisplayName(exam.teacher)
+        || 'Teacher';
+      const publishedStatus = normalizeExamStatus(exam.status);
+
+      if (publishedStatus === 'PUBLISHED' || publishedStatus === 'ACTIVE') {
+        items.push({
+          id: `publish-${String(exam.id)}`,
+          kind: 'PUBLISHED',
+          examTitle: exam.title,
+          courseName,
+          actorName,
+          occurredAt: exam.publishedAt || exam.updatedAt || exam.createdAt || '',
+        });
+      }
+
+      if (publishedStatus === 'CLOSED') {
+        items.push({
+          id: `close-${String(exam.id)}`,
+          kind: 'CLOSED',
+          examTitle: exam.title,
+          courseName,
+          actorName,
+          occurredAt: exam.updatedAt || exam.endTime || exam.publishedAt || '',
+        });
+      }
+    });
+
+    return items
+      .filter((item) => item.occurredAt)
+      .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+      .slice(0, 6);
+  }, [courses, exams, users]);
+
   if (loading) {
     return <div style={{ padding: '24px' }}>Loading admin dashboard...</div>;
   }
@@ -90,7 +176,6 @@ const AdminHome: React.FC = () => {
         <div className="stat-card"><div className="stat-card-value">{users.length}</div><div className="stat-card-label">Total Users</div></div>
         <div className="stat-card"><div className="stat-card-value">{exams.length}</div><div className="stat-card-label">Total Exams</div></div>
         <div className="stat-card"><div className="stat-card-value">{exams.filter((exam) => String(exam.status || '').toUpperCase() === 'PUBLISHED').length}</div><div className="stat-card-label">Published Exams</div></div>
-        <div className="stat-card"><div className="stat-card-value">{recentRows.length}</div><div className="stat-card-label">Recent Result Rows</div></div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '22px' }}>
@@ -119,63 +204,39 @@ const AdminHome: React.FC = () => {
 
         <div className="content-card">
           <div className="content-card-header">
-            <h2>Recent Exam Activity</h2>
+            <h2>Recent Activities</h2>
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/admin/reports')}>View Reports</button>
           </div>
           <div className="content-card-body" style={{ padding: 0 }}>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Student</th>
-                  <th>Question</th>
-                  <th>Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentRows.map((row, index) => (
-                  <tr key={`${row.sessionId}-${row.questionId}-${index}`}>
-                    <td>{row.studentName || row.studentId}</td>
-                    <td>{row.questionPrompt || row.questionId}</td>
-                    <td>{row.score ?? 0}/{row.maxScore ?? 0}</td>
-                  </tr>
-                ))}
-                {recentRows.length === 0 && (
-                  <tr>
-                    <td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
-                      No recent result activity was returned yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="content-card" style={{ gridColumn: '1 / -1' }}>
-          <div className="content-card-header">
-            <h2>Course Exam Coverage</h2>
-          </div>
-          <div className="content-card-body" style={{ padding: 0 }}>
-            <table className="data-table">
-              <thead>
-                <tr>
+                  <th>Activity</th>
                   <th>Exam</th>
                   <th>Course</th>
-                  <th>Status</th>
+                  <th>When</th>
                 </tr>
               </thead>
               <tbody>
-                {exams.map((exam) => (
-                  <tr key={String(exam.id)}>
-                    <td>{exam.title}</td>
-                    <td>{getCourseName(exam.course, exam.courseId)}</td>
-                    <td>{String(exam.status || 'N/A')}</td>
+                {recentActivities.map((activity) => (
+                  <tr key={activity.id}>
+                    <td>
+                      <span className={`badge ${activity.kind === 'CLOSED' ? 'badge-red' : 'badge-green'}`}>
+                        {activity.kind === 'CLOSED' ? 'Closed' : 'Published'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{activity.examTitle}</div>
+                      <div style={{ fontSize: '12px', color: '#888' }}>By {activity.actorName}</div>
+                    </td>
+                    <td>{activity.courseName}</td>
+                    <td>{new Date(activity.occurredAt).toLocaleString()}</td>
                   </tr>
                 ))}
-                {exams.length === 0 && (
+                {recentActivities.length === 0 && (
                   <tr>
-                    <td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
-                      No exams were returned from the course catalog.
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                      No recent exam publish or close activity was returned yet.
                     </td>
                   </tr>
                 )}
