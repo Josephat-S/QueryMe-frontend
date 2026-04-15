@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { userApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getInitials } from '../../utils/queryme';
@@ -98,7 +99,7 @@ const GuestProfile: React.FC = () => {
   }
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading guest profile...</div>;
+    return <PageSkeleton title="Guest Profile" rows={4} />;
   }
 
   return (

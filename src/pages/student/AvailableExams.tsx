@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resultApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { usePublishedExams } from '../../hooks/usePublishedExams';
 import { useStudentSessions } from '../../hooks/useStudentSessions';
 import { useAuth } from '../../contexts';
@@ -216,15 +217,7 @@ const AvailableExams: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1>Available Exams</h1>
-          <p>Loading the exams currently visible to your account.</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading exams...</div>
-      </div>
-    );
+    return <PageSkeleton title="Available Exams" rows={6} />;
   }
 
   if (pageError) {

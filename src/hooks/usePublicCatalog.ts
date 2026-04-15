@@ -17,5 +17,8 @@ export const usePublicCatalog = () => {
     return { courses, classGroups };
   }, []);
 
-  return useAsyncData(loader, [loader], 'Failed to load the public course catalog.');
+  return useAsyncData(loader, [loader], 'Failed to load the public course catalog.', {
+    cacheKey: 'public-catalog',
+    cacheTtlMs: 60_000,
+  });
 };

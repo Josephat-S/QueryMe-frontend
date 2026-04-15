@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts';
 import logoImg from '../../assets/logo.png';
 import { clearRememberedEmail, getRememberedEmail, setRememberedEmail } from '../../utils/authStorage';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import './AuthPage.css';
+import { AUTH_PAGE_TW } from '../../theme/twStyles';
 
 const ROLE_REDIRECTS: Record<string, string> = {
   ADMIN: '/admin',
@@ -80,7 +80,7 @@ const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="auth-page">
+    <div className={AUTH_PAGE_TW}>
       <div className={`auth-container ${isSignUp ? 'active' : ''}`} id="auth-container">
 
         <div className="auth-form-container auth-signup">
@@ -97,7 +97,7 @@ const AuthPage: React.FC = () => {
               <div className="auth-select" id="signup-role-select" aria-disabled="true">
                 Student Account
               </div>
-              <span className="auth-select-arrow">🔒</span>
+              <span className="auth-select-arrow">Locked</span>
             </div>
             <div className="auth-demo-label" style={{ marginBottom: 12 }}>
               Public signup is limited to student accounts. Teacher, admin, and guest access are provisioned separately.

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { formatDateTime } from '../../utils/queryme';
@@ -107,15 +108,7 @@ const MyResults: React.FC = () => {
   }, [visibleResults]);
 
   if (loading) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1>My Results</h1>
-          <p>Loading the session results released to your account.</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading results...</div>
-      </div>
-    );
+    return <PageSkeleton title="My Results" rows={6} />;
   }
 
   if (error) {

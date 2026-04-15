@@ -14,5 +14,8 @@ export const useStudentSessions = (studentId?: string) => {
     [studentId],
   );
 
-  return useAsyncData(loader, [loader], 'Failed to load exam sessions.');
+  return useAsyncData(loader, [loader], 'Failed to load exam sessions.', {
+    cacheKey: `student-sessions:${studentId || 'anonymous'}`,
+    cacheTtlMs: 30_000,
+  });
 };

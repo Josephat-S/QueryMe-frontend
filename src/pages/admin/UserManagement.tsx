@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { userApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
-import type { PlatformUser, UserRole } from '../../types/queryme';
+import type { PlatformUser } from '../../types/queryme';
 
 const MANAGED_ROLES = ['TEACHER', 'STUDENT', 'GUEST'] as const;
 type ManagedUserRole = typeof MANAGED_ROLES[number];
@@ -164,7 +165,7 @@ const UserManagement: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading users...</div>;
+    return <PageSkeleton title="User Management" rows={6} />;
   }
 
   return (

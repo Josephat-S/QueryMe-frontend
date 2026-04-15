@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { userApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getInitials } from '../../utils/queryme';
@@ -77,7 +78,7 @@ const AdminProfile: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading admin profile...</div>;
+    return <PageSkeleton title="Admin Profile" rows={4} />;
   }
 
   return (

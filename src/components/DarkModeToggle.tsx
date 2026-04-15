@@ -1,62 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useTheme } from '../contexts';
 
 const DarkModeToggle: React.FC = () => {
-  const [isDark, setIsDark] = useState(() => {
-    const stored = localStorage.getItem('theme');
-    return stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  });
-
-  useEffect(() => {
-    if (isDark) {
-      document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
-    }
-  }, [isDark]);
-
-  const toggleTheme = () => {
-    setIsDark(prev => {
-      const next = !prev;
-      if (next) {
-        localStorage.setItem('theme', 'dark');
-      } else {
-        localStorage.setItem('theme', 'light');
-      }
-      return next;
-    });
-  };
+  const { isDarkMode, toggleTheme } = useTheme();
 
   return (
     <button
       onClick={toggleTheme}
+      className="theme-toggle-btn theme-toggle-button"
       style={{
-        position: 'fixed',
-        bottom: '24px',
-        right: '24px',
         width: '46px',
         height: '46px',
+        padding: 0,
         borderRadius: '50%',
-        background: isDark ? '#1e293b' : '#fff',
-        color: isDark ? '#e2e8f0' : '#475569',
-        border: `1px solid ${isDark ? '#334155' : '#e2e8f0'}`,
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+        background: isDarkMode ? '#0f172a' : '#fff',
+        color: isDarkMode ? '#e2e8f0' : '#475569',
+        border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+        boxShadow: '0 12px 28px rgba(15, 23, 42, 0.14)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'pointer',
-        zIndex: 9999,
         transition: 'all 0.3s ease'
       }}
       aria-label="Toggle Dark Mode"
+      title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
     >
-      {isDark ? (
-        // Moon icon for dark mode
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {isDarkMode ? (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
       ) : (
-        // Sun icon for light mode
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="5"></circle>
           <line x1="12" y1="1" x2="12" y2="3"></line>
           <line x1="12" y1="21" x2="12" y2="23"></line>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, resultApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import type { Course, Exam, TeacherResultRow } from '../../api';
 
@@ -90,7 +91,7 @@ const Reports: React.FC = () => {
   }, [visibleMetrics]);
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading reports...</div>;
+    return <PageSkeleton title="Platform Reports" rows={5} />;
   }
 
   return (

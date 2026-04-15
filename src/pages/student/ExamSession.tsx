@@ -2,10 +2,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { examApi, questionApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse, type Session } from '../../api';
+import { InlineSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getExamTimeLimit, getSessionRemainingMs, isSessionComplete } from '../../utils/queryme';
-import './ExamSession.css';
+import { EXAM_SESSION_TW } from '../../theme/twStyles';
 
 interface QuestionViewModel {
   id: string;
@@ -250,7 +251,7 @@ const ExamSession: React.FC = () => {
   if (loading) {
     return (
       <div className="exam-session">
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading exam session...</div>
+        <InlineSkeleton rows={6} className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm" />
       </div>
     );
   }
@@ -276,15 +277,15 @@ const ExamSession: React.FC = () => {
   const resultTable = getResultTable(currentFeedback);
 
   return (
-    <div className="exam-session">
+    <div className={EXAM_SESSION_TW}>
       <div className="exam-header">
         <div className="exam-header-left">
           <h1 className="exam-title">{exam.title}</h1>
           <div className="exam-meta">
-            <span>📚 {getCourseName(exam.course, exam.courseId)}</span>
-            <span>📝 {questions.length} Questions</span>
-            <span>💯 {totalMarks} Marks</span>
-            <span>⏱ {getExamTimeLimit(exam) || 'N/A'} mins</span>
+            <span>Course: {getCourseName(exam.course, exam.courseId)}</span>
+            <span>Questions: {questions.length}</span>
+            <span>Marks: {totalMarks}</span>
+            <span>Time Limit: {getExamTimeLimit(exam) || 'N/A'} mins</span>
           </div>
         </div>
         <div className="exam-header-right">

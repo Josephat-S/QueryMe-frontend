@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { sessionApi, userApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getInitials } from '../../utils/queryme';
@@ -135,15 +136,7 @@ const StudentProfile: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1>My Profile</h1>
-          <p>Loading your student profile.</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading profile...</div>
-      </div>
-    );
+    return <PageSkeleton title="My Profile" rows={4} />;
   }
 
   return (

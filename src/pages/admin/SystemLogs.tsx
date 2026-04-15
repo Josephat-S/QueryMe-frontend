@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, sessionApi, userApi, type Session } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getUserDisplayName } from '../../utils/queryme';
 
@@ -210,7 +211,7 @@ const SystemLogs: React.FC = () => {
   }, [page, totalPages]);
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading operational activity...</div>;
+    return <PageSkeleton title="Operational Activity" rows={6} />;
   }
 
   return (

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, examApi, userApi, type Course, type Exam, type PlatformUser } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, getUserDisplayName, normalizeExamStatus, withPlatformUserRole } from '../../utils/queryme';
 
@@ -161,7 +162,7 @@ const AdminHome: React.FC = () => {
   }, [courses, exams, users]);
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading admin dashboard...</div>;
+    return <PageSkeleton title="Admin Dashboard" rows={5} />;
   }
 
   return (

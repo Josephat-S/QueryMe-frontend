@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, sandboxApi, userApi, type Exam, type PlatformUser } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getUserDisplayName, normalizeExamStatus } from '../../utils/queryme';
@@ -214,7 +215,7 @@ const SystemSettings: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading admin controls...</div>;
+    return <PageSkeleton title="System Settings & Controls" rows={5} />;
   }
 
   return (

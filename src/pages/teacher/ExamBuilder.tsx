@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { courseApi, examApi, questionApi, type Course, type Exam, type Question, type VisibilityMode } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
-import './TeacherPages.css';
 
 interface QuestionDraft {
   localId: string;
@@ -449,7 +449,7 @@ const ExamBuilder: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="teacher-page" style={{ padding: '24px' }}>Loading exam builder...</div>;
+    return <PageSkeleton title="Exam Builder" rows={6} />;
   }
 
   return (
@@ -499,8 +499,32 @@ const ExamBuilder: React.FC = () => {
               ))}
             </select>
             <textarea className="form-input" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Exam description" style={{ gridColumn: '1 / -1', minHeight: '96px' }} disabled={Boolean(readOnly)} />
-            <input className="form-input" type="number" min={1} value={maxAttempts} onChange={(event) => setMaxAttempts(Number(event.target.value) || 1)} disabled={Boolean(readOnly)} />
-            <input className="form-input" type="number" min={1} value={timeLimitMins} onChange={(event) => setTimeLimitMins(Number(event.target.value) || 60)} disabled={Boolean(readOnly)} />
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Max Attempts</label>
+              <input
+                className="form-input"
+                type="number"
+                min={1}
+                value={maxAttempts}
+                onChange={(event) => setMaxAttempts(Number(event.target.value) || 1)}
+                disabled={Boolean(readOnly)}
+                aria-label="Maximum attempts allowed"
+              />
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>How many times a student can submit this exam.</span>
+            </div>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Time Limit (Minutes)</label>
+              <input
+                className="form-input"
+                type="number"
+                min={1}
+                value={timeLimitMins}
+                onChange={(event) => setTimeLimitMins(Number(event.target.value) || 60)}
+                disabled={Boolean(readOnly)}
+                aria-label="Exam time limit in minutes"
+              />
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Total duration available for each exam session.</span>
+            </div>
             <select className="form-input" value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value)} disabled={Boolean(readOnly)}>
               <option value="IMMEDIATE">Immediate</option>
               <option value="END_OF_EXAM">End of Exam</option>
