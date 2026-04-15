@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastProvider';
@@ -46,6 +46,8 @@ const UserManagement: React.FC = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState<ManagedUserRole>('STUDENT');
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
   const loadUsers = async (signal?: AbortSignal) => {
     const [teachers, students, guests] = await Promise.all([
@@ -133,6 +135,11 @@ const UserManagement: React.FC = () => {
     setShowModal(true);
   };
 
+  const closeModal = () => {
+    setShowModal(false);
+    setError(null);
+  };
+
   const openEditModal = (user: ManagedUser) => {
     setEditingUser(user);
     setFormName(user.name);
@@ -141,6 +148,82 @@ const UserManagement: React.FC = () => {
     setFormRole(user.role);
     setShowModal(true);
   };
+
+  useEffect(() => {
+    if (!showModal) {
+      return;
+    }
+
+    previouslyFocusedElementRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    const modalElement = modalRef.current;
+    const originalBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const firstFocusableSelector = [
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[href]',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(', ');
+
+    const focusableElements = modalElement
+      ? Array.from(modalElement.querySelectorAll<HTMLElement>(firstFocusableSelector))
+          .filter((element) => !element.hasAttribute('hidden') && !element.getAttribute('aria-hidden'))
+      : [];
+
+    if (focusableElements.length > 0) {
+      focusableElements[0].focus();
+    }
+
+    const handleModalKeys = (event: KeyboardEvent) => {
+      if (!showModal) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !modalElement) {
+        return;
+      }
+
+      const tabbableElements = Array.from(modalElement.querySelectorAll<HTMLElement>(firstFocusableSelector))
+        .filter((element) => !element.hasAttribute('hidden') && !element.getAttribute('aria-hidden'));
+
+      if (tabbableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = tabbableElements[0];
+      const lastElement = tabbableElements[tabbableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleModalKeys);
+
+    return () => {
+      document.removeEventListener('keydown', handleModalKeys);
+      document.body.style.overflow = originalBodyOverflow;
+      previouslyFocusedElementRef.current?.focus();
+    };
+  }, [showModal]);
 
   const saveUser = async () => {
     if (!formName.trim() || !formEmail.trim()) {
@@ -167,7 +250,7 @@ const UserManagement: React.FC = () => {
       }
 
       await loadUsers();
-      setShowModal(false);
+      closeModal();
       showToast('success', editingUser ? 'User updated' : 'User created', editingUser ? 'The selected account was updated successfully.' : 'A new account was created successfully.');
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to save the user.'));
@@ -298,16 +381,18 @@ const UserManagement: React.FC = () => {
       </div>
 
       {showModal && (
-        <div className="um-modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="um-modal-overlay" onClick={closeModal}>
           <div
             className="exam-modal um-modal"
             role="dialog"
             aria-modal="true"
+            aria-labelledby="um-modal-title"
             aria-label={editingUser ? 'Edit User' : 'Create User'}
+            ref={modalRef}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="um-modal-header">
-              <h3>{editingUser ? 'Edit User' : 'Create User'}</h3>
+              <h3 id="um-modal-title">{editingUser ? 'Edit User' : 'Create User'}</h3>
               <p>
                 {editingUser
                   ? 'Update account details. Leave password empty to keep current access.'
@@ -383,7 +468,7 @@ const UserManagement: React.FC = () => {
             </div>
 
             <div className="um-modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
               <button className="btn btn-primary" onClick={() => void saveUser()} disabled={saving}>
                 {saving ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
               </button>
