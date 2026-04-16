@@ -250,6 +250,7 @@ const MyResults: React.FC = () => {
 
       {activeResult && (
         <div
+          className="marks-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -265,14 +266,14 @@ const MyResults: React.FC = () => {
           role="presentation"
         >
           <div
-            className="content-card"
+            className="content-card marks-modal"
             style={{ width: 'min(980px, 100%)', maxHeight: '85vh', overflow: 'hidden' }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="content-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="content-card-header marks-modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h2 style={{ marginBottom: '4px' }}>{activeResult.title}</h2>
-                <div style={{ fontSize: '12px', color: '#666' }}>{activeResult.course}</div>
+                <h2 className="marks-modal-title" style={{ marginBottom: '4px' }}>{activeResult.title}</h2>
+                <div className="marks-modal-course" style={{ fontSize: '12px' }}>{activeResult.course}</div>
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => setActiveResult(null)}>
                 Close
@@ -280,29 +281,24 @@ const MyResults: React.FC = () => {
             </div>
 
             <div className="content-card-body" style={{ overflowY: 'auto', maxHeight: 'calc(85vh - 96px)' }}>
-              <div style={{ marginBottom: '14px', fontSize: '13px', color: '#4a5568' }}>
+              <div className="marks-modal-score" style={{ marginBottom: '14px', fontSize: '13px' }}>
                 Session score: <strong>{activeResult.totalScore}/{activeResult.totalMaxScore}</strong>
               </div>
 
               {activeResult.questions.length > 0 ? (
-                <div style={{ display: 'grid', gap: '12px' }}>
+                <div className="marks-modal-questions" style={{ display: 'grid', gap: '12px' }}>
                   {activeResult.questions.map((question, index) => (
                     <div
                       key={String(question.questionId)}
-                      style={{
-                        border: '1px solid #e8e8ee',
-                        borderRadius: '12px',
-                        padding: '14px 16px',
-                        background: '#fff',
-                      }}
+                      className="marks-modal-question"
                     >
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#6a3cb0', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <div className="marks-modal-question-label">
                         Question {index + 1}
                       </div>
-                      <div style={{ fontSize: '13px', color: '#1a1a2e', fontWeight: 600, marginBottom: '10px' }}>
+                      <div className="marks-modal-question-prompt">
                         {question.prompt}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#4a5568', marginBottom: '8px' }}>
+                      <div className="marks-modal-question-answer">
                         <strong>Answered:</strong> {question.submittedQuery?.trim() || 'No answer submitted.'}
                       </div>
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -315,7 +311,7 @@ const MyResults: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div style={{ color: '#666' }}>No question breakdown was returned for this session.</div>
+                <div className="marks-modal-empty">No question breakdown was returned for this session.</div>
               )}
             </div>
           </div>

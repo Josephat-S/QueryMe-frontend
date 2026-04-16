@@ -1,5 +1,49 @@
 @import "tailwindcss";
 
+.marks-modal-header {
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.marks-modal-title {
+	color: #1e293b;
+}
+
+.marks-modal-course,
+.marks-modal-score,
+.marks-modal-empty {
+	color: #64748b;
+}
+
+.marks-modal-question {
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 14px 16px;
+	background: #ffffff;
+}
+
+.marks-modal-question-label {
+	font-size: 11px;
+	font-weight: 700;
+	margin-bottom: 8px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: #6d28d9;
+}
+
+.marks-modal-question-prompt {
+	font-size: 13px;
+	font-weight: 600;
+	margin-bottom: 10px;
+	color: #1e293b;
+}
+
+.marks-modal-question-answer {
+	font-size: 12px;
+	color: #475569;
+	margin-bottom: 8px;
+	word-break: break-word;
+}
+
 @media (max-width: 1024px) {
 	.page-header {
 		margin-bottom: 1rem;

@@ -519,6 +519,70 @@ body.dark-mode .um-modal-overlay {
   background: rgba(2, 6, 23, 0.7);
 }
 
+body.dark-mode .marks-modal-overlay {
+  background: rgba(2, 6, 23, 0.72) !important;
+}
+
+body.dark-mode .marks-modal {
+  background: #0b1220 !important;
+  border-color: #334155 !important;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.72) !important;
+}
+
+body.dark-mode .marks-modal-header {
+  background: #0f172a !important;
+  border-bottom: 1px solid #334155;
+}
+
+body.dark-mode .marks-modal-title {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .marks-modal-course,
+body.dark-mode .marks-modal-score,
+body.dark-mode .marks-modal-empty {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .marks-modal-score strong,
+body.dark-mode .marks-modal-question-prompt {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode .marks-modal-question {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+
+body.dark-mode .marks-modal-question-label {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #c4b5fd;
+}
+
+body.dark-mode .marks-modal-question-prompt {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+body.dark-mode .marks-modal-question-answer {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+body.dark-mode .marks-modal .badge-gray {
+  background: #1e293b;
+  color: #dbeafe;
+  border-color: #475569;
+}
+
 body.dark-mode .um-modal {
   border-color: #334155;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(11, 18, 32, 0.96) 100%);
