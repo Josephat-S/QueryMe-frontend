@@ -144,7 +144,7 @@ const ExamsList: React.FC = () => {
   }
 
   return (
-    <div className="teacher-page space-y-5 p-6 text-slate-700">
+    <div className="teacher-page space-y-5 p-4 text-slate-700 sm:p-6">
       <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-6 py-6 text-slate-800 shadow-sm">
         <div
           className="absolute inset-0"

@@ -104,7 +104,7 @@ const TeacherCourses: React.FC = () => {
   }
 
   return (
-    <div className="teacher-page" style={{ padding: '24px', overflowY: 'auto' }}>
+    <div className="teacher-page" style={{ padding: 'clamp(12px, 2.8vw, 24px)', overflowY: 'auto' }}>
       <div className="page-header">
         <h1>Courses</h1>
         <p>Create courses from the teacher portal and use them immediately for exams and student enrollment.</p>
@@ -188,7 +188,7 @@ const TeacherCourses: React.FC = () => {
               <p>Your first course will appear here as soon as you save it.</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '16px', marginTop: '16px' }}>
               {sortedCourses.map((course) => (
                 <div
                   key={String(course.id)}

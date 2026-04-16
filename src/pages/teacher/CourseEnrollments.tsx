@@ -715,7 +715,7 @@ const CourseEnrollments: React.FC = () => {
   }
 
   return (
-    <div className="teacher-page" style={{ overflow: 'hidden', padding: '24px' }}>
+    <div className="teacher-page" style={{ overflowX: 'hidden', padding: 'clamp(12px, 2.8vw, 24px)' }}>
       <input
         ref={fileInputRef}
         type="file"
@@ -759,7 +759,7 @@ const CourseEnrollments: React.FC = () => {
 
       {error && <div className="enroll-alert enroll-alert-error" style={{ marginBottom: '16px' }}>{error}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px', marginBottom: '18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '18px', marginBottom: '18px' }}>
         <div className="content-card" style={{ background: isDarkMode ? 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', boxShadow: isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.45)' : '0 12px 30px rgba(15, 23, 42, 0.06)' }}>
           <div className="content-card-header" style={{ marginBottom: '14px', alignItems: 'center' }}>
             <div>

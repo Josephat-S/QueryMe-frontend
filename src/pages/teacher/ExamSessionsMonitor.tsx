@@ -412,7 +412,7 @@ const ExamSessionsMonitor: React.FC = () => {
   }
 
   return (
-    <div className="teacher-page" style={{ overflow: 'hidden' }}>
+    <div className="teacher-page" style={{ overflowX: 'hidden' }}>
       <div className="builder-header">
         <div>
           <h1 className="builder-title" style={{ fontSize: '18px' }}>Exam Sessions Monitor</h1>
@@ -422,7 +422,7 @@ const ExamSessionsMonitor: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ padding: 'clamp(12px, 2.8vw, 24px)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <button
             type="button"
