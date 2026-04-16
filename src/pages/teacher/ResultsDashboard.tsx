@@ -1,3 +1,4 @@
+/* eslint-disable react-x/set-state-in-effect */
 import React, { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -388,7 +389,7 @@ const ResultsDashboard: React.FC = () => {
   }
 
   return (
-    <div className="teacher-page space-y-5 p-6 text-slate-700">
+    <div className="teacher-page space-y-5 p-4 text-slate-700 sm:p-6">
       <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-6 py-6 text-slate-800 shadow-sm">
         <div
           className="absolute inset-0"
@@ -646,7 +647,7 @@ const ResultsDashboard: React.FC = () => {
                   {[...selectedStudent.details]
                     .sort((a, b) => Number(a.questionId) - Number(b.questionId))
                     .map((detail, index) => (
-                      <tr key={`${selectedStudent.studentId}-${String(detail.questionId)}-${index}`}>
+                      <tr key={`${selectedStudent.studentId}-${String(detail.sessionId)}-${String(detail.questionId || index + 1)}`}>
                         <td className="border-t border-slate-100 px-4 py-3">Question {index + 1}</td>
                         <td className="border-t border-slate-100 px-4 py-3">{detail.score ?? 0}</td>
                         <td className="border-t border-slate-100 px-4 py-3">{detail.maxScore ?? 0}</td>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { sessionApi, type Session } from '../api';
-import { useToast } from '../components/ToastProvider';
+import { useToast } from '../components/ToastContext';
 import { useAuth } from '../contexts';
 import { useTheme } from '../contexts';
 import DarkModeToggle from '../components/DarkModeToggle';
@@ -28,18 +28,17 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
   const { confirm, showToast } = useToast();
   const { theme } = useTheme();
   const navigate = useNavigate();
-  const location = useLocation();
+  const [isMobileView, setIsMobileView] = useState(() => window.innerWidth < 1024);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isProcessingLogout, setIsProcessingLogout] = useState(false);
 
   useEffect(() => {
-    setMobileSidebarOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1024) {
+      const nextIsMobileView = window.innerWidth < 1024;
+
+      setIsMobileView(nextIsMobileView);
+      if (!nextIsMobileView) {
         setMobileSidebarOpen(false);
       }
     };
@@ -145,9 +144,26 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
     return colors[role] || '#6a3cb0';
   };
 
+  const showSidebarLabels = isMobileView ? mobileSidebarOpen : !sidebarCollapsed;
+  const currentSidebarWidth = isMobileView
+    ? (mobileSidebarOpen ? 288 : 80)
+    : (sidebarCollapsed ? 80 : 256);
+  const mainOffset = isMobileView ? 80 : (sidebarCollapsed ? 80 : 256);
+  const sidebarToggleLabel = isMobileView
+    ? (mobileSidebarOpen ? 'Collapse navigation menu' : 'Expand navigation menu')
+    : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  const onSidebarToggle = () => {
+    if (isMobileView) {
+      setMobileSidebarOpen((previous) => !previous);
+      return;
+    }
+
+    setSidebarCollapsed((previous) => !previous);
+  };
+
   return (
     <div className={`${DASHBOARD_LAYOUT_TW} ${theme === 'dark' ? 'dark' : ''} flex min-h-screen bg-slate-100 text-left text-slate-700`}>
-      {mobileSidebarOpen && (
+      {isMobileView && mobileSidebarOpen && (
         <button
           type="button"
           aria-label="Close navigation menu"
@@ -157,24 +173,33 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
       )}
 
       {/* Sidebar */}
-      <aside className={`dash-sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''} fixed inset-y-0 left-0 z-40 flex ${sidebarCollapsed ? 'w-20' : 'w-64'} flex-col border-r border-slate-200 bg-white shadow-sm transition-all max-lg:w-72 max-lg:-translate-x-full max-lg:shadow-xl ${mobileSidebarOpen ? 'max-lg:translate-x-0' : ''}`} style={{ '--accent': accentColor } as React.CSSProperties}>
+      <aside
+        className={`dash-sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''} fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white shadow-xl transition-[width] duration-300 lg:shadow-sm`}
+        style={{ '--accent': accentColor, width: `${currentSidebarWidth}px` } as React.CSSProperties}
+      >
         <div className="dash-sidebar-header flex items-center justify-between border-b border-slate-100 px-3 pb-3 pt-4">
           <div className="dash-logo" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', flex: 1 }}>
             <img
               src={logoImg}
               alt="QueryMe Logo"
               style={{
-                width: sidebarCollapsed ? 60 : 240,
+                width: showSidebarLabels ? 240 : 60,
                 height: 100,
                 objectFit: 'contain',
-                objectPosition: sidebarCollapsed ? 'center' : 'left center',
+                objectPosition: showSidebarLabels ? 'left center' : 'center',
                 transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
             />
           </div>
-          <button className="dash-sidebar-toggle hidden h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-emerald-400 hover:text-emerald-600 lg:grid" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} id="sidebar-toggle">
+          <button
+            className="dash-sidebar-toggle hidden h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-emerald-400 hover:text-emerald-600 lg:grid"
+            onClick={onSidebarToggle}
+            id="sidebar-toggle"
+            aria-label={sidebarToggleLabel}
+            title={sidebarToggleLabel}
+          >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {sidebarCollapsed ? (
+              {!showSidebarLabels ? (
                 <>
                   <line x1="3" y1="12" x2="21" y2="12" />
                   <line x1="3" y1="6" x2="21" y2="6" />
@@ -191,7 +216,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
         </div>
 
         {/* Portal label */}
-        {!sidebarCollapsed && (
+        {showSidebarLabels && (
           <div className="dash-portal-label px-4 pb-3 pt-4 text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: accentColor }}>
             {portalTitle}
           </div>
@@ -204,12 +229,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
               key={item.path}
               to={item.path}
               end={item.path.split('/').length <= 2}
-              onClick={() => setMobileSidebarOpen(false)}
-              className={({ isActive }) => `dash-nav-item flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${isActive ? 'active bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
-              title={sidebarCollapsed ? item.label : undefined}
+              onClick={() => {
+                if (isMobileView) {
+                  setMobileSidebarOpen(false);
+                }
+              }}
+              className={({ isActive }) => `dash-nav-item flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition ${showSidebarLabels ? 'justify-start gap-3' : 'justify-center'} ${isActive ? 'active bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
+              title={!showSidebarLabels ? item.label : undefined}
             >
               <span className="dash-nav-icon">{item.icon}</span>
-              {!sidebarCollapsed && <span className="dash-nav-label">{item.label}</span>}
+              {showSidebarLabels && <span className="dash-nav-label">{item.label}</span>}
             </NavLink>
           ))}
         </nav>
@@ -217,7 +246,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
         {/* User section at bottom */}
         <div className="dash-sidebar-footer border-t border-slate-100 p-3">
           <button
-            className="dash-logout-btn flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-500 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`dash-logout-btn flex w-full items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-500 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 ${showSidebarLabels ? 'justify-center gap-2' : 'justify-center'}`}
             onClick={() => void handleAuthAction()}
             title={user ? 'Logout' : 'Sign In'}
             id="logout-btn"
@@ -228,30 +257,22 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            {!sidebarCollapsed && <span>{user ? 'Logout' : 'Sign In'}</span>}
+            {showSidebarLabels && <span>{user ? 'Logout' : 'Sign In'}</span>}
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
       <main
-        className={`dash-main flex min-h-screen flex-col transition-all ${sidebarCollapsed ? 'ml-20 w-[calc(100%-5rem)]' : 'ml-64 w-[calc(100%-16rem)]'} max-lg:ml-0 max-lg:w-full`}
-        style={{ backgroundImage: 'radial-gradient(circle at top left, rgba(16,185,129,0.10), transparent 34%), linear-gradient(180deg, #edf2f7 0%, #dfe7f1 56%, #d6e0ee 100%)' }}
+        className="dash-main flex min-h-screen flex-col transition-[margin,width] duration-300"
+        style={{
+          marginLeft: `${mainOffset}px`,
+          width: `calc(100% - ${mainOffset}px)`,
+          backgroundImage: 'radial-gradient(circle at top left, rgba(16,185,129,0.10), transparent 34%), linear-gradient(180deg, #edf2f7 0%, #dfe7f1 56%, #d6e0ee 100%)',
+        }}
       >
         {/* Top Navbar */}
         <header className="dash-navbar sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur">
-          <button
-            type="button"
-            className="dash-mobile-menu-btn grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-400 hover:text-emerald-600 lg:hidden"
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="Open navigation menu"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
           <div className="dash-navbar-search flex w-full max-w-sm items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />

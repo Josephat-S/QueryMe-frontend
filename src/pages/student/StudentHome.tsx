@@ -419,6 +419,7 @@ const StudentHome: React.FC = () => {
 
       {pendingStartExam && (
         <div
+          className="student-start-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -433,12 +434,13 @@ const StudentHome: React.FC = () => {
           onClick={() => setPendingStartExam(null)}
         >
           <div
+            className="student-start-modal"
             style={{
               width: '100%',
               maxWidth: '420px',
               borderRadius: '16px',
               backgroundColor: 'white',
-              padding: '32px',
+              padding: 'clamp(16px, 3.5vw, 32px)',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
               border: '1px solid rgba(226, 232, 240, 0.8)',
             }}
@@ -480,7 +482,7 @@ const StudentHome: React.FC = () => {
                 This action will lock in your attempt and open the exam session. You cannot pause or navigate away once started.
               </p>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="student-start-modal-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <button
                 onClick={() => setPendingStartExam(null)}
                 style={{

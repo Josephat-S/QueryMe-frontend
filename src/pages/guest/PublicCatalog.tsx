@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { usePublicCatalog } from '../../hooks/usePublicCatalog';
 
+const EMPTY_COURSES: NonNullable<ReturnType<typeof usePublicCatalog>['data']>['courses'] = [];
+const EMPTY_CLASS_GROUPS: NonNullable<ReturnType<typeof usePublicCatalog>['data']>['classGroups'] = [];
+
 const PublicCatalog: React.FC = () => {
   const { data, loading, error, refresh } = usePublicCatalog();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCourseId, setSelectedCourseId] = useState('');
 
-  const courses = data?.courses ?? [];
-  const classGroups = data?.classGroups ?? [];
+  const courses = data?.courses ?? EMPTY_COURSES;
+  const classGroups = data?.classGroups ?? EMPTY_CLASS_GROUPS;
 
   const courseGroupsCount = useMemo(
     () => Object.fromEntries(courses.map((course) => [

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
 import type { PlatformUser } from '../../types/queryme';
@@ -75,9 +75,6 @@ const UserManagement: React.FC = () => {
   useEffect(() => {
     const controller = new AbortController();
 
-    setLoading(true);
-    setError(null);
-
     void loadUsers(controller.signal)
       .catch((err) => {
         if (!controller.signal.aborted) {
@@ -103,20 +100,11 @@ const UserManagement: React.FC = () => {
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
   const paginatedUsers = useMemo(
-    () => filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [currentPage, filteredUsers, pageSize],
+    () => filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredUsers, pageSize, safePage],
   );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedRoles, pageSize]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   const toggleRole = (role: ManagedUserRole) => {
     setSelectedRoles((currentRoles) => (
@@ -124,6 +112,7 @@ const UserManagement: React.FC = () => {
         ? currentRoles.filter((item) => item !== role)
         : [...currentRoles, role]
     ));
+    setCurrentPage(1);
   };
 
   const openCreateModal = () => {
@@ -299,13 +288,19 @@ const UserManagement: React.FC = () => {
               placeholder="Search users..."
               className="form-input"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setCurrentPage(1);
+              }}
               style={{ padding: '6px 14px', minWidth: '240px', width: '100%' }}
             />
             <select
               className="form-input"
               value={pageSize}
-              onChange={(event) => setPageSize(Number(event.target.value) as typeof PAGE_SIZE_OPTIONS[number])}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value) as typeof PAGE_SIZE_OPTIONS[number]);
+                setCurrentPage(1);
+              }}
               style={{ padding: '6px 14px', minWidth: '120px', width: '100%' }}
             >
               {PAGE_SIZE_OPTIONS.map((option) => (
@@ -372,25 +367,25 @@ const UserManagement: React.FC = () => {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            Showing {filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-
-            {Math.min(currentPage * pageSize, filteredUsers.length)} of {filteredUsers.length}
+            Showing {filteredUsers.length === 0 ? 0 : (safePage - 1) * pageSize + 1}-
+            {Math.min(safePage * pageSize, filteredUsers.length)} of {filteredUsers.length}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
               className="btn btn-secondary btn-sm"
               type="button"
-              disabled={currentPage <= 1}
+              disabled={safePage <= 1}
               onClick={() => setCurrentPage((previous) => Math.max(1, previous - 1))}
             >
               Previous
             </button>
             <span style={{ fontSize: '12px', fontWeight: 700, color: '#4a5568' }}>
-              Page {currentPage} of {totalPages}
+              Page {safePage} of {totalPages}
             </span>
             <button
               className="btn btn-secondary btn-sm"
               type="button"
-              disabled={currentPage >= totalPages}
+              disabled={safePage >= totalPages}
               onClick={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}
             >
               Next

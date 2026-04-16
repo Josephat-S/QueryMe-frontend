@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { courseApi, examApi, questionApi, type Course, type Exam, type Question, type VisibilityMode } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
 
@@ -83,10 +83,6 @@ const ExamBuilder: React.FC = () => {
   const activeExamId = workingExamId ?? examId ?? null;
   const readOnly = useMemo(() => Boolean(activeExamId) && examStatus !== 'DRAFT', [activeExamId, examStatus]);
   const requestedCourseId = searchParams.get('courseId') || '';
-
-  useEffect(() => {
-    setWorkingExamId(examId ?? null);
-  }, [examId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -475,7 +471,7 @@ const ExamBuilder: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ padding: '24px', display: 'grid', gap: '20px' }}>
+      <div style={{ padding: 'clamp(12px, 2.8vw, 24px)', display: 'grid', gap: '20px' }}>
         {error && <div style={{ color: '#e53e3e', fontSize: '13px' }}>{error}</div>}
         {!activeExamId && (
           <div style={{ color: '#2563eb', fontSize: '13px' }}>
@@ -490,7 +486,7 @@ const ExamBuilder: React.FC = () => {
 
         <div className="builder-card">
           <h2 className="students-card-title">Exam Details</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginTop: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '16px', marginTop: '16px' }}>
             <input className="form-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Exam title" disabled={Boolean(readOnly)} />
             <select className="form-input" value={courseId} onChange={(event) => setCourseId(event.target.value)} disabled={Boolean(readOnly)}>
               <option value="">Select course</option>
@@ -584,7 +580,7 @@ const ExamBuilder: React.FC = () => {
                   <div style={{ display: 'grid', gap: '12px' }}>
                     <textarea className="form-input" value={question.prompt} onChange={(event) => updateQuestion(question.localId, { prompt: event.target.value })} placeholder="Question prompt" style={{ minHeight: '90px' }} disabled={Boolean(readOnly)} />
                     <textarea className="form-input" value={question.referenceQuery} onChange={(event) => updateQuestion(question.localId, { referenceQuery: event.target.value })} placeholder="Reference SQL query" style={{ minHeight: '110px', fontFamily: 'monospace' }} disabled={Boolean(readOnly)} />
-                    <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 1fr', gap: '12px' }}>
+                    <div className="exam-builder-question-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 160px) minmax(0, 1fr) minmax(0, 1fr)', gap: '12px' }}>
                       <input className="form-input" type="number" min={1} value={question.marks} onChange={(event) => updateQuestion(question.localId, { marks: Number(event.target.value) || 1 })} disabled={Boolean(readOnly)} />
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <input type="checkbox" checked={question.orderSensitive} onChange={(event) => updateQuestion(question.localId, { orderSensitive: event.target.checked })} disabled={Boolean(readOnly)} />

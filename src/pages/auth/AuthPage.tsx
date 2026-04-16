@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts';
 import logoImg from '../../assets/logo.png';
@@ -16,6 +16,7 @@ const panelButtonBase = 'inline-flex items-center justify-center rounded-full bo
 
 const inputBase = 'h-11 w-full rounded-lg border border-[#ddd8ec] bg-white px-4 text-sm font-medium text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition placeholder:text-slate-400 focus:border-[#7c10b8]/35 focus:ring-2 focus:ring-[#7c10b8]/10';
 const formMotion = 'transition-[opacity,transform] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]';
+const rememberedEmail = getRememberedEmail();
 
 const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
   <input
@@ -48,20 +49,11 @@ const AuthPage: React.FC = () => {
   const { isAuthenticated, user, login, signup } = useAuth();
 
   // Login form state
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState(() => rememberedEmail || '');
   const [loginPassword, setLoginPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => Boolean(rememberedEmail));
   const [loginError, setLoginError] = useState('');
   const [isSigningIn, setIsSigningIn] = useState(false);
-
-  // Check for remembered email on mount
-  useEffect(() => {
-    const savedEmail = getRememberedEmail();
-    if (savedEmail) {
-      setLoginEmail(savedEmail);
-      setRememberMe(true);
-    }
-  }, []);
 
   // Signup form state
   const [signupName, setSignupName] = useState('');
@@ -110,14 +102,14 @@ const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="auth-page min-h-screen bg-[linear-gradient(180deg,#e8e5f2_0%,#d8d8ea_100%)] px-4 py-4 text-left sm:px-6 sm:py-6 lg:px-8">
-      <div className="auth-shell mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-310 items-center justify-center sm:min-h-[calc(100vh-3rem)]">
-        <div className="auth-card relative w-full min-h-172.5 overflow-hidden rounded-[26px] shadow-[0_28px_90px_rgba(92,70,140,0.28)] ring-1 ring-white/70 max-sm:min-h-0 max-sm:rounded-2xl">
-          <div className="auth-grid grid min-h-172.5 grid-cols-1 xl:grid-cols-2 max-sm:min-h-0">
-            <section className={`auth-panel relative flex min-h-172.5 items-center justify-center overflow-hidden px-6 py-10 sm:px-10 lg:px-16 max-sm:min-h-96 max-sm:px-5 max-sm:py-8 ${isSignUp ? 'bg-[linear-gradient(135deg,#8e09c6_0%,#7607b0_45%,#5a0b92_100%)]' : 'bg-white'}`}>
+    <div className="auth-page min-h-screen bg-[linear-gradient(180deg,#e8e5f2_0%,#d8d8ea_100%)] px-3 py-3 text-left sm:px-6 sm:py-6 lg:px-8">
+      <div className="auth-shell mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-310 items-center justify-center sm:min-h-[calc(100vh-3rem)]">
+        <div className="auth-card relative w-full min-h-[calc(100vh-1.5rem)] overflow-hidden rounded-2xl shadow-[0_28px_90px_rgba(92,70,140,0.28)] ring-1 ring-white/70 sm:rounded-[26px] xl:min-h-172.5">
+          <div className="auth-grid grid min-h-[calc(100vh-1.5rem)] grid-cols-1 xl:min-h-172.5 xl:grid-cols-2">
+            <section className={`${isSignUp ? 'hidden xl:flex' : 'flex'} auth-panel relative min-h-full items-center justify-center overflow-hidden px-5 py-7 sm:px-8 sm:py-9 lg:px-16 xl:min-h-172.5 ${isSignUp ? 'bg-[linear-gradient(135deg,#8e09c6_0%,#7607b0_45%,#5a0b92_100%)]' : 'bg-white'}`}>
               <div className={`absolute inset-0 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-16 ${formMotion} ${isSignUp ? 'pointer-events-none translate-x-6 opacity-0 delay-100' : 'translate-x-0 opacity-100 delay-0'}`}>
                 <form onSubmit={handleLogin} className="flex w-full max-w-90 flex-col items-center text-center">
-                  <img src={logoImg} alt="QueryMe Logo" className="mb-7 h-14 w-auto object-contain sm:mb-11 sm:h-18" />
+                  <img src={logoImg} alt="QueryMe Logo" className="mb-6 h-12 w-auto object-contain sm:mb-9 sm:h-16" />
                   <h1 className="mb-6 text-[2rem] font-semibold leading-none tracking-tight text-[#30313a] sm:mb-7 sm:text-[2.25rem]">Sign In</h1>
 
                   <div className="w-full space-y-2.5">
@@ -135,13 +127,22 @@ const AuthPage: React.FC = () => {
                     <a href="#" className="text-slate-500 transition hover:text-slate-700" id="forgot-password-link">Forget Your Password?</a>
                   </div>
 
-                  <button type="submit" className="mt-9 inline-flex h-11 w-full items-center justify-center rounded-md bg-[#7c10b8] px-5 text-xs font-semibold tracking-[0.24em] text-white shadow-[0_10px_24px_rgba(124,16,184,0.35)] transition duration-500 hover:-translate-y-0.5 hover:bg-[#6d0fa2] disabled:cursor-not-allowed disabled:opacity-70 sm:w-40" id="signin-submit-btn" disabled={isSigningIn}>
+                  <button type="submit" className="mt-7 inline-flex h-11 w-full items-center justify-center rounded-md bg-[#7c10b8] px-5 text-xs font-semibold tracking-[0.24em] text-white shadow-[0_10px_24px_rgba(124,16,184,0.35)] transition duration-500 hover:-translate-y-0.5 hover:bg-[#6d0fa2] disabled:cursor-not-allowed disabled:opacity-70 sm:w-40" id="signin-submit-btn" disabled={isSigningIn}>
                     {isSigningIn ? (
                       <span className="inline-flex items-center gap-2">
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
                         SIGNING IN...
                       </span>
                     ) : 'SIGN IN'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="mt-4 text-sm font-medium text-slate-500 transition hover:text-slate-700 xl:hidden"
+                    onClick={() => setIsSignUp(true)}
+                    disabled={isSigningIn || isSigningUp}
+                  >
+                    Need an account? Sign up
                   </button>
                 </form>
               </div>
@@ -157,10 +158,10 @@ const AuthPage: React.FC = () => {
               </div>
             </section>
 
-            <section className={`auth-panel relative flex min-h-172.5 items-center justify-center overflow-hidden px-6 py-10 sm:px-10 lg:px-16 max-sm:min-h-96 max-sm:px-5 max-sm:py-8 ${isSignUp ? 'bg-white' : 'bg-[linear-gradient(135deg,#8e09c6_0%,#7607b0_45%,#5a0b92_100%)]'}`}>
+            <section className={`${isSignUp ? 'flex' : 'hidden xl:flex'} auth-panel relative min-h-full items-center justify-center overflow-hidden px-5 py-7 sm:px-8 sm:py-9 lg:px-16 xl:min-h-172.5 ${isSignUp ? 'bg-white' : 'bg-[linear-gradient(135deg,#8e09c6_0%,#7607b0_45%,#5a0b92_100%)]'}`}>
               <div className={`absolute inset-0 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-16 ${formMotion} ${isSignUp ? 'opacity-100 translate-x-0 delay-0' : 'pointer-events-none translate-x-6 opacity-0 delay-100'}`}>
                 <form onSubmit={handleSignup} className="flex w-full max-w-90 flex-col items-center text-center">
-                  <img src={logoImg} alt="QueryMe Logo" className="mb-8 h-14 w-auto object-contain opacity-95 sm:mb-10" />
+                  <img src={logoImg} alt="QueryMe Logo" className="mb-6 h-12 w-auto object-contain opacity-95 sm:mb-8 sm:h-16" />
                   <h1 className="text-[2rem] font-semibold leading-none tracking-tight text-[#30313a] sm:text-[2.45rem]">Create Account</h1>
 
                   <div className="mt-8 w-full space-y-2.5">
@@ -181,6 +182,15 @@ const AuthPage: React.FC = () => {
                         SIGNING UP...
                       </span>
                     ) : 'SIGN UP'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="mt-4 text-sm font-medium text-slate-500 transition hover:text-slate-700 xl:hidden"
+                    onClick={() => setIsSignUp(false)}
+                    disabled={isSigningIn || isSigningUp}
+                  >
+                    Already have an account? Sign in
                   </button>
                 </form>
               </div>

@@ -26,6 +26,9 @@ interface ExamCardView {
   sortRank: number;
 }
 
+const EMPTY_EXAMS: Exam[] = [];
+const EMPTY_SESSIONS: Session[] = [];
+
 const AvailableExams: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -37,8 +40,8 @@ const AvailableExams: React.FC = () => {
     refresh: refreshSessions,
   } = useStudentSessions(user?.id);
 
-  const exams = data ?? [];
-  const sessions = sessionsData ?? [];
+  const exams = data ?? EMPTY_EXAMS;
+  const sessions = sessionsData ?? EMPTY_SESSIONS;
   const [marksByExamId, setMarksByExamId] = React.useState<Record<string, string>>({});
   const [pendingStartExam, setPendingStartExam] = React.useState<Pick<ExamCardView, 'id' | 'title' | 'durationMins'> | null>(null);
 
@@ -269,7 +272,7 @@ const AvailableExams: React.FC = () => {
           No published exams are currently visible to you.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))', gap: '18px' }}>
           {examCards.map((exam) => (
             <div key={exam.id} className="content-card" style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="content-card-body" style={{ flex: 1 }}>
@@ -282,7 +285,7 @@ const AvailableExams: React.FC = () => {
                   </span>
                 </div>
 
-                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>{exam.title}</h3>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px', overflowWrap: 'anywhere' }}>{exam.title}</h3>
                 <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px', lineHeight: 1.5 }}>
                   {exam.description || 'No description provided.'}
                 </p>
@@ -321,6 +324,7 @@ const AvailableExams: React.FC = () => {
 
       {pendingStartExam && (
         <div
+          className="student-start-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -335,12 +339,13 @@ const AvailableExams: React.FC = () => {
           onClick={() => setPendingStartExam(null)}
         >
           <div
+            className="student-start-modal"
             style={{
               width: '100%',
               maxWidth: '420px',
               borderRadius: '16px',
               backgroundColor: 'white',
-              padding: '32px',
+              padding: 'clamp(16px, 3.5vw, 32px)',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
               border: '1px solid rgba(226, 232, 240, 0.8)',
             }}
@@ -382,7 +387,7 @@ const AvailableExams: React.FC = () => {
                 This action will lock in your attempt and open the exam session. You cannot pause or navigate away once started.
               </p>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="student-start-modal-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <button
                 onClick={() => setPendingStartExam(null)}
                 style={{

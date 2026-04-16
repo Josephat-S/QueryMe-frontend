@@ -3,7 +3,8 @@ import { AuthProvider } from './AuthContext';
 import { AuthContext } from './AuthContextContext';
 import type { AuthContextType } from './AuthContext';
 import type { AuthSessionUser, UserRole } from '../types/queryme';
-import { ThemeProvider, useTheme } from './ThemeContext';
+import { ThemeProvider } from './ThemeContext';
+import { useTheme } from './useTheme';
 
 export const useAuth = () => {
   const context = use(AuthContext);

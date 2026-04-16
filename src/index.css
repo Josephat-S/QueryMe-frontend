@@ -44,6 +44,62 @@
 	word-break: break-word;
 }
 
+.teacher-page {
+	min-width: 0;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.teacher-page .content-card,
+.teacher-page .builder-card,
+.teacher-page .results-table-card,
+.teacher-page section {
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.teacher-page .students-table-wrap,
+.teacher-page .overflow-x-auto {
+	max-width: 100%;
+}
+
+.teacher-page .students-table-name,
+.teacher-page .students-table-email,
+.teacher-page .res-search-input {
+	overflow-wrap: anywhere;
+}
+
+.teacher-page .form-input,
+.teacher-page input,
+.teacher-page select,
+.teacher-page textarea {
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.teacher-page .builder-card p,
+.teacher-page .content-card p {
+	overflow-wrap: anywhere;
+}
+
+.student-start-modal {
+	max-width: min(420px, 100%);
+	box-sizing: border-box;
+}
+
+@media (max-width: 520px) {
+	.student-start-modal-overlay {
+		padding: 12px !important;
+	}
+
+	.student-start-modal-actions {
+		grid-template-columns: 1fr !important;
+	}
+}
+
 @media (max-width: 1024px) {
 	.page-header {
 		margin-bottom: 1rem;
@@ -84,6 +140,10 @@
 }
 
 @media (max-width: 768px) {
+	.teacher-page {
+		padding: 0.875rem !important;
+	}
+
 	.page-header {
 		margin-bottom: 0.75rem;
 	}
@@ -141,6 +201,17 @@
 		gap: 0.75rem;
 	}
 
+	.course-page-grid {
+		grid-template-columns: 1fr !important;
+	}
+
+	.teacher-page .content-card-header h2,
+	.teacher-page .students-card-title,
+	.teacher-page .builder-title {
+		font-size: 1rem;
+		line-height: 1.35;
+	}
+
 	.stat-card-value {
 		font-size: 1.375rem;
 	}
@@ -149,6 +220,10 @@
 @media (max-width: 640px) {
 	.page-header {
 		margin-bottom: 0.5rem;
+	}
+
+	.exam-builder-question-row {
+		grid-template-columns: 1fr !important;
 	}
 
 	.page-header h1 {

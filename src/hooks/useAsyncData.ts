@@ -1,3 +1,4 @@
+/* eslint-disable react-x/set-state-in-effect, react-x/exhaustive-deps */
 import { useCallback, useEffect, useState } from 'react';
 import type { DependencyList, Dispatch, SetStateAction } from 'react';
 import { extractErrorMessage } from '../utils/errorUtils';

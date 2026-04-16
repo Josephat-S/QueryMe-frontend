@@ -136,6 +136,7 @@ export const EXAM_SESSION_TW = [
   '[&_.exam-question-num]:text-sm [&_.exam-question-num]:font-semibold [&_.exam-question-num]:text-slate-700 [&_.exam-question-text]:text-sm [&_.exam-question-text]:leading-6 [&_.exam-question-text]:text-slate-600',
   '[&_.exam-editor-card]:grid [&_.exam-editor-card]:min-h-0 [&_.exam-editor-card]:grid-rows-[auto_1fr_auto] [&_.exam-editor-card]:rounded-2xl [&_.exam-editor-card]:border [&_.exam-editor-card]:border-slate-200 [&_.exam-editor-card]:bg-white [&_.exam-editor-card]:shadow-sm',
   '[&_.exam-editor-header]:flex [&_.exam-editor-header]:items-center [&_.exam-editor-header]:justify-between [&_.exam-editor-header]:border-b [&_.exam-editor-header]:border-slate-100 [&_.exam-editor-header]:px-4 [&_.exam-editor-header]:py-3 [&_.exam-editor-header]:font-semibold [&_.exam-editor-header]:text-slate-700',
+  '[&_.exam-editor-actions]:flex [&_.exam-editor-actions]:gap-2',
   '[&_.exam-editor-area]:grid [&_.exam-editor-area]:min-h-0 [&_.exam-editor-area]:grid-cols-[48px_1fr] [&_.exam-editor-area]:bg-slate-950',
   '[&_.exam-editor-gutter]:overflow-hidden [&_.exam-editor-gutter]:border-r [&_.exam-editor-gutter]:border-slate-800 [&_.exam-editor-gutter]:bg-slate-900 [&_.exam-editor-gutter]:px-2 [&_.exam-editor-gutter]:py-3',
   '[&_.exam-line-num]:h-6 [&_.exam-line-num]:text-right [&_.exam-line-num]:font-mono [&_.exam-line-num]:text-xs [&_.exam-line-num]:text-slate-500',
@@ -156,5 +157,5 @@ export const EXAM_SESSION_TW = [
   '[&_.btn-secondary]:border [&_.btn-secondary]:border-slate-200 [&_.btn-secondary]:bg-white [&_.btn-secondary]:text-slate-700 hover:[&_.btn-secondary]:border-emerald-300 hover:[&_.btn-secondary]:text-emerald-700',
   '[&_.badge]:inline-flex [&_.badge]:items-center [&_.badge]:rounded-full [&_.badge]:px-2.5 [&_.badge]:py-1 [&_.badge]:text-xs [&_.badge]:font-semibold',
   '[&_.badge-purple]:bg-violet-100 [&_.badge-purple]:text-violet-700 [&_.badge-green]:bg-emerald-100 [&_.badge-green]:text-emerald-700',
-  'max-lg:[&_.exam-header]:flex-col max-lg:[&_.exam-header]:items-start max-lg:[&_.exam-header-right]:w-full max-lg:[&_.exam-header-right]:justify-between max-lg:[&_.exam-body]:grid-cols-1',
+  'max-lg:[&_.exam-header]:flex-col max-lg:[&_.exam-header]:items-start max-lg:[&_.exam-header-right]:w-full max-lg:[&_.exam-header-right]:justify-between max-lg:[&_.exam-body]:grid-cols-1 max-sm:[&_.exam-header-right]:flex-col max-sm:[&_.exam-header-right]:items-stretch max-sm:[&_.exam-progress]:w-full max-sm:[&_.exam-header-right_.btn]:w-full max-sm:[&_.exam-editor-header]:flex-col max-sm:[&_.exam-editor-header]:items-stretch max-sm:[&_.exam-editor-actions]:grid max-sm:[&_.exam-editor-actions]:grid-cols-1 max-sm:[&_.exam-modal-actions]:flex-col max-sm:[&_.exam-modal-actions_.btn]:w-full',
 ].join(' ');
