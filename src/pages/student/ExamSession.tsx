@@ -404,7 +404,7 @@ const ExamSession: React.FC = () => {
           <div className="exam-editor-card">
             <div className="exam-editor-header">
               <span>SQL Editor</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="exam-editor-actions" style={{ display: 'flex', gap: '8px' }}>
                 <button className="btn btn-secondary btn-sm" onClick={() => saveDraft(currentQuestion.id, currentSql)} disabled={!currentSql.trim()}>
                   Save Draft
                 </button>
