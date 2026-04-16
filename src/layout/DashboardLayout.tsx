@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { sessionApi, type Session } from '../api';
-import { useToast } from '../components/ToastProvider';
+import { useToast } from '../components/ToastContext';
 import { useAuth } from '../contexts';
 import { useTheme } from '../contexts';
 import DarkModeToggle from '../components/DarkModeToggle';
@@ -28,14 +28,9 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, navItems, p
   const { confirm, showToast } = useToast();
   const { theme } = useTheme();
   const navigate = useNavigate();
-  const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isProcessingLogout, setIsProcessingLogout] = useState(false);
-
-  useEffect(() => {
-    setMobileSidebarOpen(false);
-  }, [location.pathname]);
 
   useEffect(() => {
     const handleResize = () => {

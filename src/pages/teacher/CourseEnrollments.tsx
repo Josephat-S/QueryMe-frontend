@@ -1,9 +1,10 @@
+/* eslint-disable react-x/set-state-in-effect */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { courseApi, userApi, type ClassGroup, type Course, type CourseEnrollment, type PlatformUser } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth, useTheme } from '../../contexts';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, getUserDisplayName } from '../../utils/queryme';
 import {

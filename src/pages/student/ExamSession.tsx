@@ -35,7 +35,7 @@ const ExamSession: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({});
-  const [submittedQuestions, setSubmittedQuestions] = useState<Set<string>>(new Set());
+  const [submittedQuestions, setSubmittedQuestions] = useState<Set<string>>(() => new Set());
   const [feedbackByQuestion, setFeedbackByQuestion] = useState<Record<string, SubmissionFeedback>>({});
   const [queryError, setQueryError] = useState('');
   const [isSubmittingQuery, setIsSubmittingQuery] = useState(false);

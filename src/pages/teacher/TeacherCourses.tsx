@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, type Course } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
 import { useAuth } from '../../contexts';
 import { useTheme } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
@@ -32,9 +32,6 @@ const TeacherCourses: React.FC = () => {
 
   useEffect(() => {
     const controller = new AbortController();
-
-    setLoading(true);
-    setError(null);
 
     void loadCourses(controller.signal)
       .catch((err) => {

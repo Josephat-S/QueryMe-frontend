@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, ReactNode } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { AuthContext } from './AuthContextContext';
 import { authApi } from '../api';
 import type { AuthSessionUser } from '../types/queryme';
@@ -36,7 +36,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return () => window.removeEventListener('qm:unauthorized', handleUnauthorized);
   }, []);
 
-  const login = async (email: string, password: string, remember = false) => {
+  const login = useCallback(async (email: string, password: string, remember = false) => {
     const result = await authApi.signIn(email, password);
     if (!result.token) {
       throw new Error('Authentication response is missing a token.');
@@ -45,22 +45,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const normalizedUser = toAuthSessionUser(result, email);
     saveAuthState(result.token, normalizedUser, remember);
     setUser(normalizedUser);
-  };
+  }, []);
 
-  const signup = async (fullName: string, email: string, password: string) => {
+  const signup = useCallback(async (fullName: string, email: string, password: string) => {
     await authApi.signUp({ fullName, email, password, role: 'STUDENT' });
     await login(email, password, false);
-  };
+  }, [login]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     clearAuthState();
     setUser(null);
-  };
+  }, []);
 
-  const updateCurrentUser = (nextUser: AuthSessionUser) => {
+  const updateCurrentUser = useCallback((nextUser: AuthSessionUser) => {
     updateStoredUser(nextUser);
     setUser(nextUser);
-  };
+  }, []);
 
   const value = useMemo<AuthContextType>(() => ({
     isAuthenticated: Boolean(user && getStoredToken()),
@@ -69,11 +69,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     signup,
     updateCurrentUser,
-  }), [user]);
+  }), [login, logout, signup, updateCurrentUser, user]);
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext value={value}>
       {children}
-    </AuthContext.Provider>
+    </AuthContext>
   );
 };

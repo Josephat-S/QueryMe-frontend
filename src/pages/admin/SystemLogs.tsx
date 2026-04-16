@@ -195,20 +195,11 @@ const SystemLogs: React.FC = () => {
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / ROWS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
   const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE),
-    [filteredRows, page],
+    () => filteredRows.slice((safePage - 1) * ROWS_PER_PAGE, safePage * ROWS_PER_PAGE),
+    [filteredRows, safePage],
   );
-
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
 
   if (loading) {
     return <PageSkeleton title="Operational Activity" rows={6} />;
@@ -227,7 +218,16 @@ const SystemLogs: React.FC = () => {
 
       <div className="content-card">
         <div className="content-card-header" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input className="form-input w-full sm:w-auto" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by exam, person, or status..." style={{ width: '260px', maxWidth: '100%' }} />
+          <input
+            className="form-input w-full sm:w-auto"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by exam, person, or status..."
+            style={{ width: '260px', maxWidth: '100%' }}
+          />
           <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#666' }}>{filteredRows.length} entries</span>
         </div>
         <div className="content-card-body hidden md:block" style={{ padding: 0, overflowX: 'auto' }}>
@@ -282,25 +282,25 @@ const SystemLogs: React.FC = () => {
         {filteredRows.length > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>
             <div style={{ fontSize: '12px', color: '#666' }}>
-              Showing {Math.min((page - 1) * ROWS_PER_PAGE + 1, filteredRows.length)}-
-              {Math.min(page * ROWS_PER_PAGE, filteredRows.length)} of {filteredRows.length}
+              Showing {Math.min((safePage - 1) * ROWS_PER_PAGE + 1, filteredRows.length)}-
+              {Math.min(safePage * ROWS_PER_PAGE, filteredRows.length)} of {filteredRows.length}
             </div>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               <button
                 className="btn btn-secondary btn-sm"
                 type="button"
-                disabled={page <= 1}
+                disabled={safePage <= 1}
                 onClick={() => setPage((previous) => Math.max(1, previous - 1))}
               >
                 Previous
               </button>
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#4a5568' }}>
-                Page {page} of {totalPages}
+                Page {safePage} of {totalPages}
               </span>
               <button
                 className="btn btn-secondary btn-sm"
                 type="button"
-                disabled={page >= totalPages}
+                disabled={safePage >= totalPages}
                 onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
               >
                 Next

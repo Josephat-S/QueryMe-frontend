@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, examApi, questionApi, type Course, type Exam } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
 
@@ -27,7 +27,7 @@ const ExamsList: React.FC = () => {
   const [busyExamId, setBusyExamId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = async (signal?: AbortSignal) => {
+  const loadData = useCallback(async (signal?: AbortSignal) => {
     if (!user) {
       setExams([]);
       return;
@@ -88,13 +88,10 @@ const ExamsList: React.FC = () => {
 
     setCourses(accessibleCourses);
     setExams(rows);
-  };
+  }, [user]);
 
   useEffect(() => {
     const controller = new AbortController();
-
-    setLoading(true);
-    setError(null);
 
     void loadData(controller.signal)
       .catch((err) => {
@@ -109,7 +106,7 @@ const ExamsList: React.FC = () => {
       });
 
     return () => controller.abort();
-  }, [user]);
+  }, [loadData]);
 
   const stats = useMemo(() => ({
     total: exams.length,

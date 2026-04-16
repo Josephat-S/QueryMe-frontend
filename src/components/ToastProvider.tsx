@@ -1,7 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-
-/* ─── Types ───────────────────────────────────────────────────── */
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
+import React, { useState, useCallback, useRef } from 'react';
+import { ToastCtx, type ConfirmOpts, type ToastType } from './ToastContext';
 
 interface Toast {
   id: number;
@@ -10,29 +8,9 @@ interface Toast {
   message?: string;
 }
 
-interface ToastContextValue {
-  showToast: (type: ToastType, title: string, message?: string) => void;
-  confirm: (opts: ConfirmOpts) => Promise<boolean>;
-}
-
-interface ConfirmOpts {
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  danger?: boolean;
-}
-
 interface ConfirmState extends ConfirmOpts {
   resolve: (v: boolean) => void;
 }
-
-/* ─── Context ─────────────────────────────────────────────────── */
-const ToastCtx = createContext<ToastContextValue>({
-  showToast: () => {},
-  confirm: async () => false,
-});
-
-export const useToast = () => useContext(ToastCtx);
 
 /* ─── Icons ───────────────────────────────────────────────────── */
 const icons: Record<ToastType, React.ReactNode> = {

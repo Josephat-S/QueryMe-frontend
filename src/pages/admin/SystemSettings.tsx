@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { courseApi, examApi, sandboxApi, userApi, type Exam, type PlatformUser } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
+import { useAsyncData } from '../../hooks/useAsyncData';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getUserDisplayName, normalizeExamStatus } from '../../utils/queryme';
 
@@ -9,6 +10,16 @@ interface SearchOption {
   id: string;
   label: string;
 }
+
+interface SystemControlsData {
+  exams: Exam[];
+  coursesById: Record<string, string>;
+  students: PlatformUser[];
+}
+
+const EMPTY_EXAMS: Exam[] = [];
+const EMPTY_COURSES_BY_ID: Record<string, string> = {};
+const EMPTY_STUDENTS: PlatformUser[] = [];
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,55 +64,43 @@ const resolveBackendIdentifier = (source: Partial<Exam> | Partial<PlatformUser>)
 
 const SystemSettings: React.FC = () => {
   const { showToast } = useToast();
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [coursesById, setCoursesById] = useState<Record<string, string>>({});
-  const [students, setStudents] = useState<PlatformUser[]>([]);
   const [sandboxExamId, setSandboxExamId] = useState('');
   const [sandboxStudentId, setSandboxStudentId] = useState('');
   const [sandboxExamSearch, setSandboxExamSearch] = useState('');
   const [sandboxStudentSearch, setSandboxStudentSearch] = useState('');
   const [sandboxInfo, setSandboxInfo] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [sandboxError, setSandboxError] = useState<string | null>(null);
   const [examActionError, setExamActionError] = useState<string | null>(null);
 
-  const loadControls = async (signal?: AbortSignal) => {
+  const loadControls = useCallback(async (signal?: AbortSignal): Promise<SystemControlsData> => {
     const courses = await courseApi.getCourses(signal);
-    setCoursesById(
-      courses.reduce<Record<string, string>>((accumulator, course) => {
-        accumulator[String(course.id)] = course.name;
-        return accumulator;
-      }, {}),
-    );
+    const coursesById = courses.reduce<Record<string, string>>((accumulator, course) => {
+      accumulator[String(course.id)] = course.name;
+      return accumulator;
+    }, {});
 
     const examLists = await Promise.all(
       courses.map((course) => examApi.getExamsByCourse(String(course.id), signal).catch(() => [] as Exam[])),
     );
-    setExams(examLists.flat());
-    setStudents(await userApi.getStudents(signal).catch(() => [] as PlatformUser[]));
-  };
+    const students = await userApi.getStudents(signal).catch(() => [] as PlatformUser[]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    setLoading(true);
-    setLoadError(null);
-
-    void loadControls(controller.signal)
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setLoadError(extractErrorMessage(err, 'Unable to load system controls right now.'));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      });
-
-    return () => controller.abort();
+    return {
+      coursesById,
+      exams: examLists.flat(),
+      students,
+    };
   }, []);
+
+  const {
+    data: controls,
+    loading,
+    error: loadError,
+    refresh: refreshControls,
+  } = useAsyncData<SystemControlsData>(loadControls, [], 'Unable to load system controls right now.');
+
+  const exams = controls?.exams ?? EMPTY_EXAMS;
+  const coursesById = controls?.coursesById ?? EMPTY_COURSES_BY_ID;
+  const students = controls?.students ?? EMPTY_STUDENTS;
 
   const runExamAction = async (examId: string, action: 'publish' | 'unpublish' | 'close' | 'delete') => {
     setExamActionError(null);
@@ -117,7 +116,7 @@ const SystemSettings: React.FC = () => {
         await examApi.deleteExam(examId);
       }
 
-      await loadControls();
+      await refreshControls();
       showToast('success', 'Administrative action complete', `Exam action "${action}" completed successfully.`);
     } catch (err) {
       setExamActionError(extractErrorMessage(err, `Could not ${action} this exam. Please try again.`));

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts';
 import logoImg from '../../assets/logo.png';
@@ -16,6 +16,7 @@ const panelButtonBase = 'inline-flex items-center justify-center rounded-full bo
 
 const inputBase = 'h-11 w-full rounded-lg border border-[#ddd8ec] bg-white px-4 text-sm font-medium text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition placeholder:text-slate-400 focus:border-[#7c10b8]/35 focus:ring-2 focus:ring-[#7c10b8]/10';
 const formMotion = 'transition-[opacity,transform] duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)]';
+const rememberedEmail = getRememberedEmail();
 
 const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
   <input
@@ -48,20 +49,11 @@ const AuthPage: React.FC = () => {
   const { isAuthenticated, user, login, signup } = useAuth();
 
   // Login form state
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState(() => rememberedEmail || '');
   const [loginPassword, setLoginPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => Boolean(rememberedEmail));
   const [loginError, setLoginError] = useState('');
   const [isSigningIn, setIsSigningIn] = useState(false);
-
-  // Check for remembered email on mount
-  useEffect(() => {
-    const savedEmail = getRememberedEmail();
-    if (savedEmail) {
-      setLoginEmail(savedEmail);
-      setRememberMe(true);
-    }
-  }, []);
 
   // Signup form state
   const [signupName, setSignupName] = useState('');

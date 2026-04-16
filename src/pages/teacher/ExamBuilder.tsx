@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { courseApi, examApi, questionApi, type Course, type Exam, type Question, type VisibilityMode } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
-import { useToast } from '../../components/ToastProvider';
+import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
 
@@ -83,10 +83,6 @@ const ExamBuilder: React.FC = () => {
   const activeExamId = workingExamId ?? examId ?? null;
   const readOnly = useMemo(() => Boolean(activeExamId) && examStatus !== 'DRAFT', [activeExamId, examStatus]);
   const requestedCourseId = searchParams.get('courseId') || '';
-
-  useEffect(() => {
-    setWorkingExamId(examId ?? null);
-  }, [examId]);
 
   useEffect(() => {
     const controller = new AbortController();

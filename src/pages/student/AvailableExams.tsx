@@ -26,6 +26,9 @@ interface ExamCardView {
   sortRank: number;
 }
 
+const EMPTY_EXAMS: Exam[] = [];
+const EMPTY_SESSIONS: Session[] = [];
+
 const AvailableExams: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -37,8 +40,8 @@ const AvailableExams: React.FC = () => {
     refresh: refreshSessions,
   } = useStudentSessions(user?.id);
 
-  const exams = data ?? [];
-  const sessions = sessionsData ?? [];
+  const exams = data ?? EMPTY_EXAMS;
+  const sessions = sessionsData ?? EMPTY_SESSIONS;
   const [marksByExamId, setMarksByExamId] = React.useState<Record<string, string>>({});
   const [pendingStartExam, setPendingStartExam] = React.useState<Pick<ExamCardView, 'id' | 'title' | 'durationMins'> | null>(null);
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { sessionApi, userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
@@ -30,7 +30,7 @@ const StudentProfile: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [studentProfileId, setStudentProfileId] = useState<string | null>(null);
 
-  const resolveStudentProfileId = async (signal?: AbortSignal): Promise<string | null> => {
+  const resolveStudentProfileId = useCallback(async (signal?: AbortSignal): Promise<string | null> => {
     if (!user) {
       return null;
     }
@@ -45,7 +45,7 @@ const StudentProfile: React.FC = () => {
       .find((id) => isNumericId(id));
 
     return fallbackId || null;
-  };
+  }, [user]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -91,7 +91,7 @@ const StudentProfile: React.FC = () => {
     void loadProfile();
 
     return () => controller.abort();
-  }, [user]);
+  }, [resolveStudentProfileId, user]);
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();

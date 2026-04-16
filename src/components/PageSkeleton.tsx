@@ -7,6 +7,9 @@ interface PageSkeletonProps {
 }
 
 const pulseClass = 'animate-pulse rounded-xl bg-slate-300/60';
+const statSkeletonKeys = ['stat-1', 'stat-2', 'stat-3', 'stat-4'] as const;
+
+const buildRowSkeletonKeys = (rows: number) => Array.from({ length: rows }, (_, index) => `row-${index + 1}`);
 
 export const PageSkeleton: React.FC<PageSkeletonProps> = ({
   title,
@@ -29,8 +32,8 @@ export const PageSkeleton: React.FC<PageSkeletonProps> = ({
 
       {showStats && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          {statSkeletonKeys.map((key) => (
+            <div key={key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className={`${pulseClass} h-8 w-16`} />
               <div className={`${pulseClass} mt-3 h-3 w-28`} />
             </div>
@@ -41,8 +44,8 @@ export const PageSkeleton: React.FC<PageSkeletonProps> = ({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className={`${pulseClass} h-5 w-40`} />
         <div className="mt-4 space-y-3">
-          {Array.from({ length: rows }).map((_, index) => (
-            <div key={index} className={`${pulseClass} h-11 w-full`} />
+          {buildRowSkeletonKeys(rows).map((key) => (
+            <div key={key} className={`${pulseClass} h-11 w-full`} />
           ))}
         </div>
       </div>
@@ -54,8 +57,8 @@ export const PageSkeleton: React.FC<PageSkeletonProps> = ({
 export const InlineSkeleton: React.FC<{ rows?: number; className?: string }> = ({ rows = 3, className = '' }) => {
   return (
     <div className={`space-y-3 p-4 ${className}`.trim()} aria-busy="true" aria-live="polite">
-      {Array.from({ length: rows }).map((_, index) => (
-        <div key={index} className={`${pulseClass} h-10 w-full`} />
+      {buildRowSkeletonKeys(rows).map((key) => (
+        <div key={key} className={`${pulseClass} h-10 w-full`} />
       ))}
       <span className="sr-only">Loading content</span>
     </div>

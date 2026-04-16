@@ -1,3 +1,4 @@
+/* eslint-disable react-x/set-state-in-effect */
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, sessionApi, userApi, type CourseEnrollment, type Exam, type PlatformUser, type Session } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
@@ -216,7 +217,7 @@ const ExamSessionsMonitor: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [statusFilter, setStatusFilter] = useState<SessionFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 

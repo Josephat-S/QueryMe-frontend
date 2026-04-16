@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ThemeCtx } from './ThemeContextValue';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -10,8 +11,6 @@ interface ThemeContextValue {
 }
 
 const THEME_STORAGE_KEY = 'theme';
-
-const ThemeCtx = createContext<ThemeContextValue | null>(null);
 
 const getPreferredTheme = (): ThemeMode => {
   if (typeof window === 'undefined') {
@@ -27,43 +26,33 @@ const getPreferredTheme = (): ThemeMode => {
 };
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<ThemeMode>(getPreferredTheme);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getPreferredTheme);
 
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
-    const isDark = theme === 'dark';
+    const isDark = themeMode === 'dark';
 
     root.classList.toggle('dark', isDark);
     body.classList.toggle('dark-mode', isDark);
-    body.dataset.theme = theme;
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
+    body.dataset.theme = themeMode;
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }, [themeMode]);
 
   const setTheme = useCallback((nextTheme: ThemeMode) => {
-    setThemeState(nextTheme);
+    setThemeMode(nextTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
+    setThemeMode((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'));
   }, []);
 
   const value = useMemo<ThemeContextValue>(() => ({
-    theme,
-    isDarkMode: theme === 'dark',
+    theme: themeMode,
+    isDarkMode: themeMode === 'dark',
     toggleTheme,
     setTheme,
-  }), [setTheme, theme, toggleTheme]);
+  }), [setTheme, themeMode, toggleTheme]);
 
-  return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
-};
-
-export const useTheme = () => {
-  const context = useContext(ThemeCtx);
-
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-
-  return context;
+  return <ThemeCtx value={value}>{children}</ThemeCtx>;
 };

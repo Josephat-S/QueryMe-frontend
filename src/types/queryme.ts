@@ -130,7 +130,7 @@ export interface CreateExamPayload {
   endTime?: string;
 }
 
-export interface UpdateExamPayload extends Partial<CreateExamPayload> {}
+export type UpdateExamPayload = Partial<CreateExamPayload>;
 
 export interface Question {
   id: Identifier;
