@@ -85,6 +85,21 @@
 	overflow-wrap: anywhere;
 }
 
+.student-start-modal {
+	max-width: min(420px, 100%);
+	box-sizing: border-box;
+}
+
+@media (max-width: 520px) {
+	.student-start-modal-overlay {
+		padding: 12px !important;
+	}
+
+	.student-start-modal-actions {
+		grid-template-columns: 1fr !important;
+	}
+}
+
 @media (max-width: 1024px) {
 	.page-header {
 		margin-bottom: 1rem;
