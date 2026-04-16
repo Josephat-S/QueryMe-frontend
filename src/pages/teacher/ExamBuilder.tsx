@@ -184,7 +184,7 @@ const ExamBuilder: React.FC = () => {
       return 'Select a course before saving.';
     }
     if (requireSeedSql && !seedSql.trim()) {
-      return 'Seed SQL is required before the backend can validate question answers.';
+      return 'Seed SQL is required before the backend can prepare question answer keys.';
     }
     return null;
   };
@@ -550,7 +550,7 @@ const ExamBuilder: React.FC = () => {
             </label>
           </div>
           <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-            The backend uses this SQL to provision the exam dataset and generate answer keys for every question.
+            The backend uses this SQL to provision the exam dataset and generate answer keys for every question. Multi-statement scripts are allowed, and final INSERT/UPDATE/DELETE statements can omit RETURNING because the backend adds it automatically.
           </p>
           <textarea className="form-input" value={seedSql} onChange={(event) => setSeedSql(event.target.value)} style={{ width: '100%', minHeight: '220px', marginTop: '14px', fontFamily: 'monospace' }} disabled={Boolean(readOnly)} />
         </div>
