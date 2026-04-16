@@ -40,6 +40,7 @@ const AvailableExams: React.FC = () => {
   const exams = data ?? [];
   const sessions = sessionsData ?? [];
   const [marksByExamId, setMarksByExamId] = React.useState<Record<string, string>>({});
+  const [pendingStartExam, setPendingStartExam] = React.useState<Pick<ExamCardView, 'id' | 'title' | 'durationMins'> | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -216,6 +217,19 @@ const AvailableExams: React.FC = () => {
     return undefined;
   };
 
+  const handleExamAction = (exam: ExamCardView) => {
+    if (exam.actionState === 'START') {
+      setPendingStartExam({
+        id: exam.id,
+        title: exam.title,
+        durationMins: exam.durationMins,
+      });
+      return;
+    }
+
+    navigate(`/student/exam-session/${exam.id}`);
+  };
+
   if (isLoading) {
     return <PageSkeleton title="Available Exams" rows={6} />;
   }
@@ -288,7 +302,7 @@ const AvailableExams: React.FC = () => {
                 <button
                   className={getActionButtonClass(exam.actionState)}
                   style={{ width: '100%', justifyContent: 'center', ...getActionButtonStyle(exam.actionState) }}
-                  onClick={() => navigate(`/student/exam-session/${exam.id}`)}
+                  onClick={() => handleExamAction(exam)}
                   disabled={exam.actionDisabled}
                 >
                   {exam.actionLabel}
@@ -302,6 +316,34 @@ const AvailableExams: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {pendingStartExam && (
+        <div className="exam-modal-overlay">
+          <div className="exam-modal">
+            <h3>Start exam now?</h3>
+            <p>
+              You are about to start <strong>{pendingStartExam.title}</strong>.
+              {' '}Duration: <strong>{pendingStartExam.durationMins || 'N/A'} min</strong>.
+            </p>
+            <p>Do you want to continue?</p>
+            <div className="exam-modal-actions">
+              <button className="btn btn-secondary" onClick={() => setPendingStartExam(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const examId = pendingStartExam.id;
+                  setPendingStartExam(null);
+                  navigate(`/student/exam-session/${examId}`);
+                }}
+              >
+                Start Exam
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
