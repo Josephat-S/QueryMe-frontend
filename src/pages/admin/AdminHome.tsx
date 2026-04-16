@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, examApi, userApi, type Course, type Exam, type PlatformUser } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, getUserDisplayName, normalizeExamStatus, withPlatformUserRole } from '../../utils/queryme';
 
@@ -161,7 +162,7 @@ const AdminHome: React.FC = () => {
   }, [courses, exams, users]);
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading admin dashboard...</div>;
+    return <PageSkeleton title="Admin Dashboard" rows={5} />;
   }
 
   return (
@@ -178,14 +179,14 @@ const AdminHome: React.FC = () => {
         <div className="stat-card"><div className="stat-card-value">{exams.filter((exam) => String(exam.status || '').toUpperCase() === 'PUBLISHED').length}</div><div className="stat-card-label">Published Exams</div></div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '22px' }}>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="content-card">
           <div className="content-card-header">
             <h2>User Distribution</h2>
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/admin/users')}>Manage Users</button>
           </div>
-          <div className="content-card-body" style={{ padding: 0 }}>
-            <table className="data-table">
+          <div className="content-card-body hidden md:block" style={{ padding: 0 }}>
+            <table className="data-table min-w-80">
               <thead>
                 <tr>
                   <th>Role</th>
@@ -200,6 +201,12 @@ const AdminHome: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <div className="space-y-3 p-4 md:hidden">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Students</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.students}</div></div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Teachers</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.teachers}</div></div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admins</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.admins}</div></div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guests</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.guests}</div></div>
+          </div>
         </div>
 
         <div className="content-card">
@@ -207,8 +214,8 @@ const AdminHome: React.FC = () => {
             <h2>Recent Activities</h2>
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/admin/reports')}>View Reports</button>
           </div>
-          <div className="content-card-body" style={{ padding: 0 }}>
-            <table className="data-table">
+          <div className="content-card-body hidden md:block" style={{ padding: 0 }}>
+            <table className="data-table min-w-110">
               <thead>
                 <tr>
                   <th>Activity</th>
@@ -242,6 +249,24 @@ const AdminHome: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="space-y-3 p-4 md:hidden">
+            {recentActivities.map((activity) => (
+              <div key={`mobile-${activity.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <span className={`badge ${activity.kind === 'CLOSED' ? 'badge-red' : 'badge-green'}`}>
+                  {activity.kind === 'CLOSED' ? 'Closed' : 'Published'}
+                </span>
+                <div className="mt-2 font-semibold text-slate-800">{activity.examTitle}</div>
+                <div className="mt-1 text-xs text-slate-500">By {activity.actorName}</div>
+                <div className="mt-1 text-xs text-slate-500">{activity.courseName}</div>
+                <div className="mt-2 text-xs text-slate-500">{new Date(activity.occurredAt).toLocaleString()}</div>
+              </div>
+            ))}
+            {recentActivities.length === 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+                No recent exam publish or close activity was returned yet.
+              </div>
+            )}
           </div>
         </div>
       </div>

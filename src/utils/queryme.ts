@@ -131,7 +131,7 @@ export const getCourseName = (course?: Partial<Course> | null, fallbackId?: Iden
     return course.name;
   }
 
-  return fallbackId ? String(fallbackId) : 'Unknown Course';
+  return fallbackId ? 'Course' : 'Unknown Course';
 };
 
 export const filterCoursesByTeacher = (courses: Course[], teacherId?: string | null): Course[] => {

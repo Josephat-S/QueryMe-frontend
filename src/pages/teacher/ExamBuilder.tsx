@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { courseApi, examApi, questionApi, type Course, type Exam, type Question, type VisibilityMode } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
-import './TeacherPages.css';
 
 interface QuestionDraft {
   localId: string;
@@ -184,7 +184,7 @@ const ExamBuilder: React.FC = () => {
       return 'Select a course before saving.';
     }
     if (requireSeedSql && !seedSql.trim()) {
-      return 'Seed SQL is required before the backend can validate question answers.';
+      return 'Seed SQL is required before the backend can prepare question answer keys.';
     }
     return null;
   };
@@ -449,7 +449,7 @@ const ExamBuilder: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="teacher-page" style={{ padding: '24px' }}>Loading exam builder...</div>;
+    return <PageSkeleton title="Exam Builder" rows={6} />;
   }
 
   return (
@@ -461,7 +461,7 @@ const ExamBuilder: React.FC = () => {
             This builder now saves directly to the backend exam and question modules.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => navigate('/teacher/exams')}>Cancel</button>
           <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || readOnly}>
             {saving ? saveProgress || 'Saving...' : 'Save Draft'}
@@ -490,7 +490,7 @@ const ExamBuilder: React.FC = () => {
 
         <div className="builder-card">
           <h2 className="students-card-title">Exam Details</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginTop: '16px' }}>
             <input className="form-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Exam title" disabled={Boolean(readOnly)} />
             <select className="form-input" value={courseId} onChange={(event) => setCourseId(event.target.value)} disabled={Boolean(readOnly)}>
               <option value="">Select course</option>
@@ -499,8 +499,32 @@ const ExamBuilder: React.FC = () => {
               ))}
             </select>
             <textarea className="form-input" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Exam description" style={{ gridColumn: '1 / -1', minHeight: '96px' }} disabled={Boolean(readOnly)} />
-            <input className="form-input" type="number" min={1} value={maxAttempts} onChange={(event) => setMaxAttempts(Number(event.target.value) || 1)} disabled={Boolean(readOnly)} />
-            <input className="form-input" type="number" min={1} value={timeLimitMins} onChange={(event) => setTimeLimitMins(Number(event.target.value) || 60)} disabled={Boolean(readOnly)} />
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Max Attempts</label>
+              <input
+                className="form-input"
+                type="number"
+                min={1}
+                value={maxAttempts}
+                onChange={(event) => setMaxAttempts(Number(event.target.value) || 1)}
+                disabled={Boolean(readOnly)}
+                aria-label="Maximum attempts allowed"
+              />
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>How many times a student can submit this exam.</span>
+            </div>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Time Limit (Minutes)</label>
+              <input
+                className="form-input"
+                type="number"
+                min={1}
+                value={timeLimitMins}
+                onChange={(event) => setTimeLimitMins(Number(event.target.value) || 60)}
+                disabled={Boolean(readOnly)}
+                aria-label="Exam time limit in minutes"
+              />
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Total duration available for each exam session.</span>
+            </div>
             <select className="form-input" value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value)} disabled={Boolean(readOnly)}>
               <option value="IMMEDIATE">Immediate</option>
               <option value="END_OF_EXAM">End of Exam</option>
@@ -513,7 +537,7 @@ const ExamBuilder: React.FC = () => {
         </div>
 
         <div className="builder-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <h2 className="students-card-title">Seed SQL</h2>
             <label className="btn btn-secondary btn-sm" style={{ cursor: readOnly ? 'not-allowed' : 'pointer', opacity: readOnly ? 0.6 : 1 }}>
               Upload `.sql`
@@ -526,7 +550,7 @@ const ExamBuilder: React.FC = () => {
             </label>
           </div>
           <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-            The backend uses this SQL to provision the exam dataset and generate answer keys for every question.
+            The backend uses this SQL to provision the exam dataset and generate answer keys for every question. Multi-statement scripts are allowed, and final INSERT/UPDATE/DELETE statements can omit RETURNING because the backend adds it automatically.
           </p>
           <textarea className="form-input" value={seedSql} onChange={(event) => setSeedSql(event.target.value)} style={{ width: '100%', minHeight: '220px', marginTop: '14px', fontFamily: 'monospace' }} disabled={Boolean(readOnly)} />
         </div>

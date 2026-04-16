@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { sessionApi, userApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getInitials } from '../../utils/queryme';
@@ -135,15 +136,7 @@ const StudentProfile: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1>My Profile</h1>
-          <p>Loading your student profile.</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading profile...</div>
-      </div>
-    );
+    return <PageSkeleton title="My Profile" rows={4} />;
   }
 
   return (
@@ -153,7 +146,7 @@ const StudentProfile: React.FC = () => {
         <p>Review your account details and update your password.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
         <div className="content-card">
           <div className="content-card-body" style={{ textAlign: 'center', padding: '32px 20px' }}>
             <div
@@ -189,7 +182,7 @@ const StudentProfile: React.FC = () => {
           </div>
           <div className="content-card-body">
             <form onSubmit={handleSave}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                 <div>
                   <label className="profile-info-label">Full Name</label>
                   <input className="form-input" value={name} disabled style={{ width: '100%', opacity: 0.7, cursor: 'not-allowed' }} />

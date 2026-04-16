@@ -16,9 +16,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToSignup, onLogin }) => {
   };
 
   return (
-    <div className="flex bg-white rounded-2xl shadow-xl overflow-hidden">
+    <div className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-xl lg:flex-row">
       {/* Left - Sign In Form */}
-      <div className="w-full lg:w-3/5 p-12">
+      <div className="w-full p-6 sm:p-8 lg:w-3/5 lg:p-12">
         <div className="flex justify-center mb-8">
           <img src={logo} alt="QueryMe Logo" className="h-24 w-auto" />
         </div>
@@ -63,7 +63,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToSignup, onLogin }) => {
       </div>
 
       {/* Right - Hello Friend Section */}
-      <div className="hidden lg:flex lg:w-2/5 bg-gradient-to-br from-blue-600 to-blue-700 relative overflow-hidden">
+      <div className="hidden relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-700 lg:flex lg:w-2/5">
         {/* Curved shape overlay */}
         <svg className="absolute top-0 left-0 w-20 h-full" viewBox="0 0 80 800" preserveAspectRatio="none">
           <path d="M 0 0 Q 80 400 0 800 L 0 0" fill="white" />

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { formatDateTime } from '../../utils/queryme';
@@ -107,15 +108,7 @@ const MyResults: React.FC = () => {
   }, [visibleResults]);
 
   if (loading) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1>My Results</h1>
-          <p>Loading the session results released to your account.</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading results...</div>
-      </div>
-    );
+    return <PageSkeleton title="My Results" rows={6} />;
   }
 
   if (error) {
@@ -160,8 +153,8 @@ const MyResults: React.FC = () => {
         <div className="content-card-header">
           <h2>Session History</h2>
         </div>
-        <div className="content-card-body" style={{ padding: 0 }}>
-          <table className="data-table">
+        <div className="content-card-body hidden md:block" style={{ padding: 0 }}>
+          <table className="data-table min-w-120">
             <thead>
               <tr>
                 <th>Exam</th>
@@ -220,6 +213,38 @@ const MyResults: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="space-y-3 p-4 md:hidden">
+          {results.map((result) => (
+            <div key={`mobile-${result.sessionId}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="font-semibold text-slate-800">{result.title}</div>
+              <div className="mt-1 text-xs text-slate-500">{result.course}</div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <div><strong>Submitted:</strong> {formatDateTime(result.submittedAt)}</div>
+                <div><strong>Visibility:</strong> {result.visible ? result.visibilityMode : 'Hidden'}</div>
+              </div>
+              <div className="mt-3">
+                {result.visible ? (
+                  <button
+                    type="button"
+                    aria-label={`View score details for ${result.title}`}
+                    onClick={() => setActiveResult(result)}
+                    className="inline-flex w-full items-center justify-center rounded-full border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-700 underline"
+                  >
+                    View {result.totalScore}/{result.totalMaxScore}
+                  </button>
+                ) : (
+                  <span className="text-sm text-slate-500">Awaiting release</span>
+                )}
+              </div>
+            </div>
+          ))}
+          {results.length === 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+              No exam sessions have been recorded yet.
+            </div>
+          )}
         </div>
       </div>
 

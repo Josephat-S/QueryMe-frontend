@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { InlineSkeleton } from '../../components/PageSkeleton';
 import { usePublicCatalog } from '../../hooks/usePublicCatalog';
 
 const GuestHome: React.FC = () => {
@@ -36,14 +37,14 @@ const GuestHome: React.FC = () => {
           <div className="stat-card-icon" style={{ background: 'rgba(106, 60, 176, 0.1)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6a3cb0" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
           </div>
-          <div className="stat-card-value">{loading ? '...' : courses.length}</div>
+          <div className="stat-card-value">{loading ? <span className="inline-block h-7 w-16 animate-pulse rounded-lg bg-slate-300/60" /> : courses.length}</div>
           <div className="stat-card-label">Public Courses</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon" style={{ background: 'rgba(56, 161, 105, 0.1)' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38a169" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1.11-1.79l-7-3.5a2 2 0 0 0-1.78 0l-7 3.5A2 2 0 0 0 3 8v8a2 2 0 0 0 1.11 1.79l7 3.5a2 2 0 0 0 1.78 0l7-3.5A2 2 0 0 0 21 16z" /></svg>
           </div>
-          <div className="stat-card-value">{loading ? '...' : classGroups.length}</div>
+          <div className="stat-card-value">{loading ? <span className="inline-block h-7 w-16 animate-pulse rounded-lg bg-slate-300/60" /> : classGroups.length}</div>
           <div className="stat-card-label">Class Groups</div>
         </div>
       </div>
@@ -81,7 +82,7 @@ const GuestHome: React.FC = () => {
         </div>
         <div className="content-card-body">
           {loading ? (
-            <div style={{ padding: '12px 0' }}>Loading public catalog...</div>
+            <InlineSkeleton rows={3} className="px-0" />
           ) : featuredCourses.length === 0 ? (
             <div style={{ padding: '12px 0', color: '#666' }}>No public courses were returned by the backend.</div>
           ) : (

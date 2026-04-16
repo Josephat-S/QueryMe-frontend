@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, sessionApi, userApi, type Session } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getUserDisplayName } from '../../utils/queryme';
 
@@ -210,12 +211,12 @@ const SystemLogs: React.FC = () => {
   }, [page, totalPages]);
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading operational activity...</div>;
+    return <PageSkeleton title="Operational Activity" rows={6} />;
   }
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1>Operational Activity</h1>
           <p>Recent session lifecycle events derived from the exam and session modules.</p>
@@ -225,12 +226,12 @@ const SystemLogs: React.FC = () => {
       {error && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{error}</div>}
 
       <div className="content-card">
-        <div className="content-card-header" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input className="form-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by exam, person, or status..." style={{ width: '260px' }} />
+        <div className="content-card-header" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input className="form-input w-full sm:w-auto" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by exam, person, or status..." style={{ width: '260px', maxWidth: '100%' }} />
           <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#666' }}>{filteredRows.length} entries</span>
         </div>
-        <div className="content-card-body" style={{ padding: 0, overflowX: 'auto' }}>
-          <table className="data-table">
+        <div className="content-card-body hidden md:block" style={{ padding: 0, overflowX: 'auto' }}>
+          <table className="data-table min-w-175">
             <thead>
               <tr>
                 <th>Activity</th>
@@ -259,6 +260,24 @@ const SystemLogs: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="space-y-3 p-4 md:hidden">
+          {pagedRows.map((row) => (
+            <div key={`mobile-${row.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{row.event === 'EXAM_CREATED' ? 'Exam Created' : 'Student Finished Exam'}</div>
+              <div className="mt-1 font-semibold text-slate-800">{row.examTitle}</div>
+              <div className="mt-1 text-xs text-slate-500">{row.actorName}</div>
+              <div className="mt-3 flex items-center justify-between">
+                <span className="badge badge-gray">{row.statusLabel}</span>
+                <span className="text-xs text-slate-500">{new Date(row.occurredAt).toLocaleString()}</span>
+              </div>
+            </div>
+          ))}
+          {pagedRows.length === 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+              No operational activity matched the current search.
+            </div>
+          )}
         </div>
         {filteredRows.length > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, resultApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import type { Course, Exam, TeacherResultRow } from '../../api';
 
@@ -90,17 +91,17 @@ const Reports: React.FC = () => {
   }, [visibleMetrics]);
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading reports...</div>;
+    return <PageSkeleton title="Platform Reports" rows={5} />;
   }
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1>Platform Reports</h1>
           <p>Course-by-course metrics derived from exams and latest result dashboard rows.</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedCourseId('ALL')}>
+        <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={() => setSelectedCourseId('ALL')}>
           Reset View
         </button>
       </div>
@@ -111,13 +112,13 @@ const Reports: React.FC = () => {
 
       {error && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{error}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '22px' }}>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="content-card" style={{ gridColumn: '1 / -1' }}>
           <div className="content-card-header">
             <h2>Course Performance Overview</h2>
           </div>
-          <div className="content-card-body" style={{ padding: 0, overflowX: 'auto' }}>
-            <table className="data-table">
+          <div className="content-card-body hidden md:block" style={{ padding: 0, overflowX: 'auto' }}>
+            <table className="data-table min-w-[620px]">
               <thead>
                 <tr>
                   <th>Course</th>
@@ -163,6 +164,39 @@ const Reports: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <div className="space-y-3 p-4 md:hidden">
+            {visibleMetrics.map((metric) => {
+              const averageScore = metric.resultRows.length
+                ? Math.round(
+                    metric.resultRows.reduce((sum, row) => sum + (((row.score || 0) / (row.maxScore || 1)) * 100), 0) / metric.resultRows.length,
+                  )
+                : 0;
+
+              const isSelected = String(metric.course.id) === selectedCourseId;
+
+              return (
+                <div key={`course-mobile-${String(metric.course.id)}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="font-semibold text-slate-800">{metric.course.name}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div><strong>Exams:</strong> {metric.exams.length}</div>
+                    <div><strong>Average:</strong> {averageScore}%</div>
+                  </div>
+                  <button
+                    className={`btn btn-sm mt-3 w-full ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setSelectedCourseId(String(metric.course.id))}
+                    disabled={isSelected}
+                  >
+                    {isSelected ? 'Selected' : 'Inspect'}
+                  </button>
+                </div>
+              );
+            })}
+            {visibleMetrics.length === 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+                No courses match the current scope.
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="content-card" style={{ gridColumn: '1 / -1' }}>
@@ -170,7 +204,7 @@ const Reports: React.FC = () => {
             <h2>Key Indicators</h2>
           </div>
           <div className="content-card-body">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.exams}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Exams</div></div>
               <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.averageScore}%</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Average Score</div></div>
               <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.correctRate}%</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Correct Rate</div></div>

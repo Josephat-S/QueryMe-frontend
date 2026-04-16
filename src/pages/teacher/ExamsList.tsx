@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, examApi, questionApi, type Course, type Exam } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
-import './TeacherPages.css';
 
 interface ExamRow {
   id: string;
@@ -143,32 +143,34 @@ const ExamsList: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="teacher-page" style={{ padding: '24px', overflowY: 'auto' }}>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading exams...</div>
-      </div>
-    );
+    return <PageSkeleton title="Exams" rows={6} />;
   }
 
   return (
-    <div className="teacher-page" style={{ padding: '24px', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <h1 className="builder-title" style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 8px' }}>Exams</h1>
-          <p className="exam-list-desc" style={{ fontSize: '14px', margin: 0 }}>
+    <div className="teacher-page space-y-5 p-6 text-slate-700">
+      <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-6 py-6 text-slate-800 shadow-sm">
+        <div
+          className="absolute inset-0"
+          style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(16,185,129,0.14), transparent 34%), radial-gradient(circle at bottom left, rgba(59,130,246,0.12), transparent 34%)' }}
+        />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="m-0 text-3xl font-semibold tracking-tight text-slate-900">Exams</h1>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">
             Manage exams from the backend course catalog and publish them when ready.
-          </p>
+            </p>
+          </div>
+          <button className="inline-flex items-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-400" onClick={() => navigate('/teacher/exams/builder')}>
+            Create New Exam
+          </button>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/teacher/exams/builder')}>
-          Create New Exam
-        </button>
-      </div>
+      </section>
 
-      <div className="stat-grid" style={{ marginBottom: '20px' }}>
-        <div className="stat-card"><div className="stat-card-value">{stats.total}</div><div className="stat-card-label">Total Exams</div></div>
-        <div className="stat-card"><div className="stat-card-value">{stats.published}</div><div className="stat-card-label">Published</div></div>
-        <div className="stat-card"><div className="stat-card-value">{stats.drafts}</div><div className="stat-card-label">Drafts</div></div>
-        <div className="stat-card"><div className="stat-card-value">{courses.length}</div><div className="stat-card-label">Courses</div></div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="text-3xl font-semibold tracking-tight text-slate-900">{stats.total}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Total Exams</div></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="text-3xl font-semibold tracking-tight text-slate-900">{stats.published}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Published</div></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="text-3xl font-semibold tracking-tight text-slate-900">{stats.drafts}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Drafts</div></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="text-3xl font-semibold tracking-tight text-slate-900">{courses.length}</div><div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Courses</div></div>
       </div>
 
       {error && (
@@ -176,59 +178,60 @@ const ExamsList: React.FC = () => {
       )}
 
       {exams.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
           No exams were returned from your accessible courses yet.
         </div>
       ) : (
-        <div className="results-table-card" style={{ marginTop: 0 }}>
-          <table className="results-table">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-220 text-sm">
             <thead>
               <tr>
-                <th>Exam</th>
-                <th>Questions</th>
-                <th>Max Attempts</th>
-                <th>Visibility</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Exam</th>
+                <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Questions</th>
+                <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Max Attempts</th>
+                <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Visibility</th>
+                <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Status</th>
+                <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-violet-700">Actions</th>
               </tr>
             </thead>
             <tbody>
               {exams.map((exam) => (
                 <tr key={exam.id}>
-                  <td>
-                    <div className="exam-list-title">{exam.title}</div>
-                    <div className="exam-list-course">{exam.course}</div>
+                  <td className="border-t border-slate-100 px-4 py-3">
+                    <div className="font-semibold text-slate-800">{exam.title}</div>
+                    <div className="mt-1 text-xs text-slate-500">{exam.course}</div>
                   </td>
-                  <td className="exam-list-highlight">{exam.questionsCount}</td>
-                  <td>{exam.maxAttempts}</td>
-                  <td>{exam.visibilityMode}</td>
-                  <td>
-                    <span className={`badge ${exam.status === 'PUBLISHED' ? 'badge-green' : exam.status === 'CLOSED' ? 'badge-red' : 'badge-gray'}`}>
+                  <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{exam.questionsCount}</td>
+                  <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{exam.maxAttempts}</td>
+                  <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{exam.visibilityMode}</td>
+                  <td className="border-t border-slate-100 px-4 py-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${exam.status === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-700' : exam.status === 'CLOSED' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
                       {exam.status}
                     </span>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/teacher/exams/builder/${exam.id}`)}>
+                  <td className="border-t border-slate-100 px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700" onClick={() => navigate(`/teacher/exams/builder/${exam.id}`)}>
                         Edit
                       </button>
                       {exam.status === 'DRAFT' && (
-                        <button className="btn btn-primary btn-sm" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'publish')}>
+                        <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'publish')}>
                           Publish
                         </button>
                       )}
                       {exam.status === 'PUBLISHED' && (
                         <>
-                          <button className="btn btn-secondary btn-sm" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'unpublish')}>
+                          <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'unpublish')}>
                             Unpublish
                           </button>
-                          <button className="btn btn-secondary btn-sm" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'close')}>
+                          <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'close')}>
                             Close
                           </button>
                         </>
                       )}
                       {exam.status === 'DRAFT' && (
-                        <button className="btn btn-secondary btn-sm" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'delete')}>
+                        <button className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'delete')}>
                           Delete
                         </button>
                       )}
@@ -237,7 +240,48 @@ const ExamsList: React.FC = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
+
+          <div className="space-y-3 p-4 md:hidden">
+            {exams.map((exam) => (
+              <div key={`mobile-${exam.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="font-semibold text-slate-800">{exam.title}</div>
+                <div className="mt-1 text-xs text-slate-500">{exam.course}</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <div><strong>Questions:</strong> {exam.questionsCount}</div>
+                  <div><strong>Attempts:</strong> {exam.maxAttempts}</div>
+                  <div><strong>Visibility:</strong> {exam.visibilityMode}</div>
+                  <div><strong>Status:</strong> {exam.status}</div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700" onClick={() => navigate(`/teacher/exams/builder/${exam.id}`)}>
+                    Edit
+                  </button>
+                  {exam.status === 'DRAFT' && (
+                    <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'publish')}>
+                      Publish
+                    </button>
+                  )}
+                  {exam.status === 'PUBLISHED' && (
+                    <>
+                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'unpublish')}>
+                        Unpublish
+                      </button>
+                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'close')}>
+                        Close
+                      </button>
+                    </>
+                  )}
+                  {exam.status === 'DRAFT' && (
+                    <button className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'delete')}>
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

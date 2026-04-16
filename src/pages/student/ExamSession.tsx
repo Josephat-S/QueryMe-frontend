@@ -2,10 +2,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { examApi, questionApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse, type Session } from '../../api';
+import { InlineSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getExamTimeLimit, getSessionRemainingMs, isSessionComplete } from '../../utils/queryme';
-import './ExamSession.css';
+import { EXAM_SESSION_TW } from '../../theme/twStyles';
 
 interface QuestionViewModel {
   id: string;
@@ -40,6 +41,9 @@ const ExamSession: React.FC = () => {
   const [isSubmittingQuery, setIsSubmittingQuery] = useState(false);
   const [isSubmittingExam, setIsSubmittingExam] = useState(false);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [isSubmittingOnLeave, setIsSubmittingOnLeave] = useState(false);
+  const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const autoSubmitRef = useRef(false);
 
@@ -128,6 +132,52 @@ const ExamSession: React.FC = () => {
 
     return () => window.clearInterval(interval);
   }, [navigate, session]);
+
+  useEffect(() => {
+    const handleNavigationAttempt = (event: MouseEvent) => {
+      if (!session || isSessionComplete(session) || autoSubmitRef.current || isSubmittingExam || isSubmittingOnLeave) {
+        return;
+      }
+
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      const anchor = event.target.closest('a[href]') as HTMLAnchorElement | null;
+
+      if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) {
+        return;
+      }
+
+      const rawHref = anchor.getAttribute('href');
+      if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('mailto:') || rawHref.startsWith('tel:')) {
+        return;
+      }
+
+      const destination = new URL(anchor.href, window.location.origin);
+      if (destination.origin !== window.location.origin) {
+        return;
+      }
+
+      const nextPath = `${destination.pathname}${destination.search}${destination.hash}`;
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+      if (nextPath === currentPath) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingNavigationPath(nextPath);
+      setShowLeaveModal(true);
+    };
+
+    document.addEventListener('click', handleNavigationAttempt, true);
+
+    return () => {
+      document.removeEventListener('click', handleNavigationAttempt, true);
+    };
+  }, [isSubmittingExam, isSubmittingOnLeave, session]);
 
   const currentQuestion = questions[currentIndex];
   const currentSql = currentQuestion ? (draftAnswers[currentQuestion.id] || '') : '';
@@ -247,10 +297,33 @@ const ExamSession: React.FC = () => {
     }
   };
 
+  const submitAndLeave = async () => {
+    if (!session || !pendingNavigationPath) {
+      setShowLeaveModal(false);
+      return;
+    }
+
+    setIsSubmittingOnLeave(true);
+    setError(null);
+
+    try {
+      await sessionApi.submitSession(String(session.id));
+      autoSubmitRef.current = true;
+      setShowLeaveModal(false);
+      navigate(pendingNavigationPath);
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to submit your exam session before leaving this page.'));
+      setShowLeaveModal(false);
+    } finally {
+      setIsSubmittingOnLeave(false);
+      setPendingNavigationPath(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="exam-session">
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading exam session...</div>
+        <InlineSkeleton rows={6} className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm" />
       </div>
     );
   }
@@ -276,15 +349,15 @@ const ExamSession: React.FC = () => {
   const resultTable = getResultTable(currentFeedback);
 
   return (
-    <div className="exam-session">
+    <div className={EXAM_SESSION_TW}>
       <div className="exam-header">
         <div className="exam-header-left">
           <h1 className="exam-title">{exam.title}</h1>
           <div className="exam-meta">
-            <span>📚 {getCourseName(exam.course, exam.courseId)}</span>
-            <span>📝 {questions.length} Questions</span>
-            <span>💯 {totalMarks} Marks</span>
-            <span>⏱ {getExamTimeLimit(exam) || 'N/A'} mins</span>
+            <span>Course: {getCourseName(exam.course, exam.courseId)}</span>
+            <span>Questions: {questions.length}</span>
+            <span>Marks: {totalMarks}</span>
+            <span>Time Limit: {getExamTimeLimit(exam) || 'N/A'} mins</span>
           </div>
         </div>
         <div className="exam-header-right">
@@ -421,6 +494,34 @@ const ExamSession: React.FC = () => {
               <button className="btn btn-secondary" onClick={() => setShowConfirmSubmit(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={submitExam} disabled={isSubmittingExam}>
                 {isSubmittingExam ? 'Submitting...' : 'Submit Exam'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLeaveModal && (
+        <div className="exam-modal-overlay">
+          <div className="exam-modal">
+            <h3>Leave exam page?</h3>
+            <p>
+              Leaving this page will submit your exam immediately.
+            </p>
+            <div className="exam-modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (isSubmittingOnLeave) {
+                    return;
+                  }
+                  setShowLeaveModal(false);
+                  setPendingNavigationPath(null);
+                }}
+              >
+                Stay on Exam
+              </button>
+              <button className="btn btn-primary" onClick={submitAndLeave} disabled={isSubmittingOnLeave}>
+                {isSubmittingOnLeave ? 'Submitting...' : 'Leave and Submit'}
               </button>
             </div>
           </div>

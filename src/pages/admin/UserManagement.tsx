@@ -1,12 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { userApi } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
-import type { PlatformUser, UserRole } from '../../types/queryme';
+import type { PlatformUser } from '../../types/queryme';
 
 const MANAGED_ROLES = ['TEACHER', 'STUDENT', 'GUEST'] as const;
 type ManagedUserRole = typeof MANAGED_ROLES[number];
+
+const ROLE_LABELS: Record<ManagedUserRole, string> = {
+  TEACHER: 'Teacher',
+  STUDENT: 'Student',
+  GUEST: 'Guest',
+};
+
+const ROLE_DESCRIPTIONS: Record<ManagedUserRole, string> = {
+  TEACHER: 'Can build exams, manage courses, and monitor sessions.',
+  STUDENT: 'Can take assigned exams and view personal results.',
+  GUEST: 'Can explore public catalog and limited platform features.',
+};
 
 interface ManagedUser {
   id: string;
@@ -33,6 +46,8 @@ const UserManagement: React.FC = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState<ManagedUserRole>('STUDENT');
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
   const loadUsers = async (signal?: AbortSignal) => {
     const [teachers, students, guests] = await Promise.all([
@@ -120,6 +135,11 @@ const UserManagement: React.FC = () => {
     setShowModal(true);
   };
 
+  const closeModal = () => {
+    setShowModal(false);
+    setError(null);
+  };
+
   const openEditModal = (user: ManagedUser) => {
     setEditingUser(user);
     setFormName(user.name);
@@ -128,6 +148,82 @@ const UserManagement: React.FC = () => {
     setFormRole(user.role);
     setShowModal(true);
   };
+
+  useEffect(() => {
+    if (!showModal) {
+      return;
+    }
+
+    previouslyFocusedElementRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    const modalElement = modalRef.current;
+    const originalBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const firstFocusableSelector = [
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[href]',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(', ');
+
+    const focusableElements = modalElement
+      ? Array.from(modalElement.querySelectorAll<HTMLElement>(firstFocusableSelector))
+          .filter((element) => !element.hasAttribute('hidden') && !element.getAttribute('aria-hidden'))
+      : [];
+
+    if (focusableElements.length > 0) {
+      focusableElements[0].focus();
+    }
+
+    const handleModalKeys = (event: KeyboardEvent) => {
+      if (!showModal) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !modalElement) {
+        return;
+      }
+
+      const tabbableElements = Array.from(modalElement.querySelectorAll<HTMLElement>(firstFocusableSelector))
+        .filter((element) => !element.hasAttribute('hidden') && !element.getAttribute('aria-hidden'));
+
+      if (tabbableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = tabbableElements[0];
+      const lastElement = tabbableElements[tabbableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleModalKeys);
+
+    return () => {
+      document.removeEventListener('keydown', handleModalKeys);
+      document.body.style.overflow = originalBodyOverflow;
+      previouslyFocusedElementRef.current?.focus();
+    };
+  }, [showModal]);
 
   const saveUser = async () => {
     if (!formName.trim() || !formEmail.trim()) {
@@ -154,7 +250,7 @@ const UserManagement: React.FC = () => {
       }
 
       await loadUsers();
-      setShowModal(false);
+      closeModal();
       showToast('success', editingUser ? 'User updated' : 'User created', editingUser ? 'The selected account was updated successfully.' : 'A new account was created successfully.');
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to save the user.'));
@@ -164,17 +260,17 @@ const UserManagement: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading users...</div>;
+    return <PageSkeleton title="User Management" rows={6} />;
   }
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1>User Management</h1>
           <p>Create and update platform identities using the real admin-facing endpoints.</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreateModal}>
+        <button className="btn btn-primary w-full sm:w-auto" onClick={openCreateModal}>
           Add User
         </button>
       </div>
@@ -197,20 +293,20 @@ const UserManagement: React.FC = () => {
               );
             })}
           </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', width: '100%' }} className="sm:w-auto">
             <input
               type="text"
               placeholder="Search users..."
               className="form-input"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              style={{ padding: '6px 14px', minWidth: '240px' }}
+              style={{ padding: '6px 14px', minWidth: '240px', width: '100%' }}
             />
             <select
               className="form-input"
               value={pageSize}
               onChange={(event) => setPageSize(Number(event.target.value) as typeof PAGE_SIZE_OPTIONS[number])}
-              style={{ padding: '6px 14px', minWidth: '120px' }}
+              style={{ padding: '6px 14px', minWidth: '120px', width: '100%' }}
             >
               {PAGE_SIZE_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -221,8 +317,8 @@ const UserManagement: React.FC = () => {
           </div>
         </div>
         {error && <div style={{ padding: '12px 24px', color: '#e53e3e' }}>{error}</div>}
-        <div className="content-card-body" style={{ padding: 0, overflowX: 'auto' }}>
-          <table className="data-table">
+        <div className="content-card-body hidden md:block" style={{ padding: 0, overflowX: 'auto' }}>
+          <table className="data-table min-w-140">
             <thead>
               <tr>
                 <th>User Details</th>
@@ -255,6 +351,25 @@ const UserManagement: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <div className="space-y-3 p-4 md:hidden">
+          {paginatedUsers.map((user) => (
+            <div key={`card-${user.role}-${user.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="font-semibold text-slate-800">{user.name}</div>
+              <div className="mt-1 text-xs text-slate-500">{user.email}</div>
+              <div className="mt-3 flex items-center justify-between">
+                <span className="badge badge-gray">{user.role}</span>
+                <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(user)}>
+                  Edit
+                </button>
+              </div>
+            </div>
+          ))}
+          {paginatedUsers.length === 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+              No users match the active filter.
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '12px', color: '#666' }}>
             Showing {filteredUsers.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-
@@ -285,50 +400,94 @@ const UserManagement: React.FC = () => {
       </div>
 
       {showModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backdropFilter: 'blur(3px)',
-        }}>
-          <div className="exam-modal" style={{ borderRadius: '16px', padding: '32px', width: '420px', maxWidth: '90%', textAlign: 'left' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '20px', fontWeight: 700 }}>
-              {editingUser ? 'Edit User' : 'Create User'}
-            </h3>
+        <div className="um-modal-overlay" onClick={closeModal}>
+          <div
+            className="exam-modal um-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="um-modal-title"
+            aria-label={editingUser ? 'Edit User' : 'Create User'}
+            ref={modalRef}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="um-modal-header">
+              <h3 id="um-modal-title">{editingUser ? 'Edit User' : 'Create User'}</h3>
+              <p>
+                {editingUser
+                  ? 'Update account details. Leave password empty to keep current access.'
+                  : 'Create a new platform account for teacher, student, or guest access.'}
+              </p>
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#888', marginBottom: '6px' }}>Full Name</label>
-                <input className="form-input" value={formName} onChange={(event) => setFormName(event.target.value)} style={{ width: '100%' }} />
+            {error && <div className="um-modal-error">{error}</div>}
+
+            <div className="um-modal-grid">
+              <div className="um-form-field um-field-wide">
+                <label className="um-form-label" htmlFor="user-full-name">Full Name <span>*</span></label>
+                <input
+                  id="user-full-name"
+                  className="form-input"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  placeholder="Enter full name"
+                  autoComplete="name"
+                />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#888', marginBottom: '6px' }}>Email Address</label>
-                <input className="form-input" value={formEmail} onChange={(event) => setFormEmail(event.target.value)} style={{ width: '100%' }} />
+
+              <div className="um-form-field um-field-wide">
+                <label className="um-form-label" htmlFor="user-email">Email Address <span>*</span></label>
+                <input
+                  id="user-email"
+                  type="email"
+                  className="form-input"
+                  value={formEmail}
+                  onChange={(event) => setFormEmail(event.target.value)}
+                  placeholder="name@company.com"
+                  autoComplete="email"
+                />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#888', marginBottom: '6px' }}>
-                  {editingUser ? 'New Password (Optional)' : 'Password'}
+
+              <div className="um-form-field um-field-wide">
+                <label className="um-form-label" htmlFor="user-password">
+                  {editingUser ? 'New Password (Optional)' : 'Password'} {!editingUser && <span>*</span>}
                 </label>
-                <input type="password" className="form-input" value={formPassword} onChange={(event) => setFormPassword(event.target.value)} style={{ width: '100%' }} />
+                <input
+                  id="user-password"
+                  type="password"
+                  className="form-input"
+                  value={formPassword}
+                  onChange={(event) => setFormPassword(event.target.value)}
+                  placeholder={editingUser ? 'Enter a new password only if needed' : 'Create temporary password'}
+                  autoComplete={editingUser ? 'new-password' : 'off'}
+                />
               </div>
+
               {!editingUser && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#888', marginBottom: '6px' }}>Role</label>
-                  <select className="form-input" value={formRole} onChange={(event) => setFormRole(event.target.value as ManagedUserRole)} style={{ width: '100%' }}>
-                    <option value="STUDENT">Student</option>
-                    <option value="TEACHER">Teacher</option>
-                    <option value="GUEST">Guest</option>
-                  </select>
+                <div className="um-form-field um-field-wide">
+                  <label className="um-form-label">Role</label>
+                  <div className="um-role-grid">
+                    {MANAGED_ROLES.map((role) => {
+                      const isActive = formRole === role;
+
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          className={`um-role-option ${isActive ? 'active' : ''}`}
+                          onClick={() => setFormRole(role)}
+                        >
+                          <strong>{ROLE_LABELS[role]}</strong>
+                          <span>{ROLE_DESCRIPTIONS[role]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+            <div className="um-modal-actions">
+              <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
               <button className="btn btn-primary" onClick={() => void saveUser()} disabled={saving}>
                 {saving ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
               </button>

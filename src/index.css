@@ -1,114 +1,146 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@media (max-width: 1024px) {
+	.page-header {
+		margin-bottom: 1rem;
+	}
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+	.page-header h1 {
+		font-size: 1.625rem;
+		line-height: 1.2;
+	}
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+	.content-card-header {
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+	.content-card-body {
+		padding: 1rem;
+	}
+
+	.stat-card,
+	.profile-card-body,
+	.builder-card,
+	.results-table-card {
+		padding: 1rem;
+	}
+
+	.dash-content {
+		padding: 1rem;
+	}
+
+	.results-controls-grid {
+		grid-template-columns: 1fr !important;
+	}
+
+	.results-pagination {
+		flex-wrap: wrap;
+	}
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+@media (max-width: 768px) {
+	.page-header {
+		margin-bottom: 0.75rem;
+	}
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
+	.page-header h1 {
+		font-size: 1.5rem;
+	}
 
-#root {
-  width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
+	.page-header p {
+		font-size: 0.8125rem;
+		line-height: 1.55;
+	}
 
-body {
-  margin: 0;
-}
+	.content-card,
+	.builder-card,
+	.profile-card-body,
+	.results-table-card {
+		border-radius: 1rem;
+		padding: 0.875rem;
+	}
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
+	.content-card-header {
+		align-items: flex-start;
+	}
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
+	.content-card-header .btn,
+	.content-card-header button,
+	.content-card-header a {
+		width: 100%;
+	}
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+	.builder-header {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.td-quick-actions {
+		display: grid;
+		grid-template-columns: 1fr;
+	}
+
+	.td-quick-actions .btn,
+	.builder-header .btn {
+		width: 100%;
+	}
+
+	.dash-content table {
+		display: block;
+		width: 100%;
+		overflow-x: auto;
+		white-space: nowrap;
+	}
+
+	.stat-grid {
+		gap: 0.75rem;
+	}
+
+	.stat-card-value {
+		font-size: 1.375rem;
+	}
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+@media (max-width: 640px) {
+	.page-header {
+		margin-bottom: 0.5rem;
+	}
+
+	.page-header h1 {
+		font-size: 1.25rem;
+	}
+
+	.page-header p {
+		font-size: 0.78rem;
+	}
+
+	.stat-card-value {
+		font-size: 1.35rem;
+	}
+
+	.dash-content {
+		padding: 0.625rem;
+	}
+
+	.content-card,
+	.builder-card,
+	.profile-card-body,
+	.results-table-card {
+		padding: 0.75rem;
+	}
+
+	.content-card-body {
+		padding: 0.875rem;
+	}
+
+	.results-modal,
+	.exam-modal {
+		border-radius: 1rem;
+	}
+
+	.auth-title,
+	.auth-toggle-panel_h1 {
+		font-size: 2rem;
+	}
 }

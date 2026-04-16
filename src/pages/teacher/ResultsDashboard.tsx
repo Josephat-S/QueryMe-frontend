@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { courseApi, examApi, resultApi, type Exam, type TeacherResultRow } from '../../api';
+import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, getCourseName, normalizeExamStatus } from '../../utils/queryme';
-import './TeacherPages.css';
 
 type ScoreBand = 'all' | 'high' | 'medium' | 'low';
 type StudentStatusFilter = 'all' | 'correct' | 'reviewed';
@@ -49,6 +52,19 @@ const ResultsDashboard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState<StudentSummaryRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedExam = useMemo(
+    () => examOptions.find((exam) => String(exam.id) === selectedExamId) || null,
+    [examOptions, selectedExamId],
+  );
+
+  const selectedExamLabel = useMemo(() => {
+    if (!selectedExam) {
+      return 'Selected exam';
+    }
+
+    return `${selectedExam.title} - ${getCourseName(selectedExam.course, selectedExam.courseId)}`;
+  }, [selectedExam]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -200,7 +216,7 @@ const ResultsDashboard: React.FC = () => {
         .map((detail) => `${detail.questionPrompt || ''} ${detail.submittedQuery || ''}`)
         .join(' ')
         .toLowerCase();
-      const studentHaystack = `${student.studentName} ${student.studentId} ${detailHaystack}`.toLowerCase();
+      const studentHaystack = `${student.studentName} ${detailHaystack}`.toLowerCase();
       const matchesSearch = lowerSearch.length === 0 || studentHaystack.includes(lowerSearch);
       const matchesStatus = statusFilter === 'all' || student.status.toLowerCase() === statusFilter;
       const matchesScoreBand = scoreBandFilter === 'all' || getScoreBand(student.averagePercent) === scoreBandFilter;
@@ -263,22 +279,130 @@ const ResultsDashboard: React.FC = () => {
     return Math.round((totals.totalScore / totals.totalMaxScore) * 100);
   }, [filteredRows]);
 
+  const buildExportRows = () => filteredRows.map((student) => ({
+    Student: student.studentName || 'Student',
+    'Total Score': student.totalScore,
+    'Max Score': student.totalMaxScore,
+    Percentage: `${student.averagePercent}%`,
+    Questions: student.questionCount,
+    Status: student.status,
+    'Last Submitted': student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A',
+  }));
+
+  const buildDetailExportRows = () => filteredRows.flatMap((student) => student.details.map((detail, index) => ({
+    Student: student.studentName || 'Student',
+    Question: detail.questionPrompt || `Question ${index + 1}`,
+    'Score Earned': detail.score ?? 0,
+    'Max Score': detail.maxScore ?? 0,
+    'Submitted At': detail.submittedAt ? new Date(detail.submittedAt).toLocaleString() : 'N/A',
+    Correct: detail.isCorrect ? 'Yes' : 'No',
+  })));
+
+  const getExportFileBase = () => {
+    const examPart = selectedExam?.title || 'results';
+    const normalized = examPart.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return `${normalized || 'results'}-${new Date().toISOString().slice(0, 10)}`;
+  };
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCsv = () => {
+    const rowsToExport = buildExportRows();
+    const worksheet = XLSX.utils.json_to_sheet(rowsToExport);
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${getExportFileBase()}.csv`);
+  };
+
+  const handleExportExcel = () => {
+    const summarySheet = XLSX.utils.json_to_sheet(buildExportRows());
+    const detailsSheet = XLSX.utils.json_to_sheet(buildDetailExportRows());
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Details');
+
+    XLSX.writeFile(workbook, `${getExportFileBase()}.xlsx`);
+  };
+
+  const handleExportPdf = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const createdAt = new Date().toLocaleString();
+    const summaryRows = buildExportRows().map((row) => [
+      row.Student,
+      row['Total Score'],
+      row['Max Score'],
+      row.Percentage,
+      row.Questions,
+      row.Status,
+      row['Last Submitted'],
+    ]);
+
+    doc.setFontSize(18);
+    doc.text('Exam Results Report', 40, 44);
+    doc.setFontSize(11);
+    doc.text(`Exam: ${selectedExamLabel}`, 40, 64);
+    doc.text(`Generated: ${createdAt}`, 40, 80);
+
+    autoTable(doc, {
+      startY: 98,
+      head: [[
+        'Student',
+        'Total Score',
+        'Max Score',
+        'Percentage',
+        'Questions',
+        'Status',
+        'Last Submitted',
+      ]],
+      body: summaryRows,
+      styles: {
+        fontSize: 9,
+        cellPadding: 5,
+        textColor: [30, 41, 59],
+      },
+      headStyles: {
+        fillColor: [244, 244, 245],
+        textColor: [109, 40, 217],
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [250, 250, 251],
+      },
+      margin: { left: 40, right: 40 },
+    });
+
+    doc.save(`${getExportFileBase()}.pdf`);
+  };
+
   if (loadingOptions) {
-    return <div className="teacher-page" style={{ padding: '24px' }}>Loading results dashboard...</div>;
+    return <PageSkeleton title="Results Dashboard" rows={6} />;
   }
 
   return (
-    <div className="teacher-page" style={{ padding: '24px', overflow: 'hidden' }}>
-      <div className="builder-header">
-        <div>
-          <h1 className="builder-title" style={{ fontSize: '18px' }}>Results Dashboard</h1>
-          <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#666' }}>
+    <div className="teacher-page space-y-5 p-6 text-slate-700">
+      <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-6 py-6 text-slate-800 shadow-sm">
+        <div
+          className="absolute inset-0"
+          style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(16,185,129,0.14), transparent 34%), radial-gradient(circle at bottom left, rgba(59,130,246,0.12), transparent 34%)' }}
+        />
+        <div className="relative">
+          <h1 className="m-0 text-3xl font-semibold tracking-tight text-slate-900">Results Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-600">
             Review total marks per student. Click View to open question-level marks.
           </p>
         </div>
-      </div>
+      </section>
 
-      <div className="results-controls-grid">
+      <div className="results-controls-grid rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <input
           className="res-search-input"
           value={searchQuery}
@@ -289,7 +413,7 @@ const ResultsDashboard: React.FC = () => {
           <option value="">Select exam</option>
           {examOptions.map((exam) => (
             <option key={String(exam.id)} value={String(exam.id)}>
-              {exam.title} · {getCourseName(exam.course, exam.courseId)}
+              {exam.title} - {getCourseName(exam.course, exam.courseId)}
             </option>
           ))}
         </select>
@@ -315,87 +439,145 @@ const ResultsDashboard: React.FC = () => {
           ))}
         </select>
 
-        <div className="content-card results-average-card">
-          <span style={{ fontSize: '12px', color: '#666' }}>Average Score</span>
-          <strong>{averageScore}%</strong>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Average Score</span>
+          <strong className="mt-1 block text-2xl font-semibold text-slate-900">{averageScore}%</strong>
         </div>
       </div>
 
-      {error && <div style={{ color: '#e53e3e', marginBottom: '12px' }}>{error}</div>}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div>
+          <strong className="block text-sm text-slate-900">Export results</strong>
+          <span className="text-xs text-slate-500">Download the currently filtered students report for {selectedExamLabel}.</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+            onClick={handleExportCsv}
+            disabled={filteredRows.length === 0}
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+            onClick={handleExportExcel}
+            disabled={filteredRows.length === 0}
+          >
+            Export Excel
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleExportPdf}
+            disabled={filteredRows.length === 0}
+          >
+            Export PDF
+          </button>
+        </div>
+      </div>
 
-      <div className="results-table-card">
+      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      <div className="results-table-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {loadingRows ? (
-          <div style={{ padding: '24px' }}>Loading exam results...</div>
+          <InlineSkeleton rows={6} className="p-6" />
         ) : filteredRows.length === 0 ? (
-          <div style={{ padding: '24px', color: '#666' }}>
+          <div className="p-6 text-sm text-slate-500">
             No students match the current filters for this exam.
           </div>
         ) : (
           <>
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>Student</th>
-                  <th>Total Score</th>
-                  <th>Questions</th>
-                  <th>Status</th>
-                  <th>Last Submitted</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedRows.map((student) => {
-                  return (
-                    <tr className="results-student-row" key={student.studentId}>
-                      <td>
-                        <div className="sess-student-name">{student.studentName || student.studentId}</div>
-                        <div className="sess-student-email">
-                          {student.questionCount} question{student.questionCount === 1 ? '' : 's'} attempted
-                        </div>
-                      </td>
-                      <td>{student.totalScore}/{student.totalMaxScore} ({student.averagePercent}%)</td>
-                      <td>{student.questionCount}</td>
-                      <td>
-                        <span className={`badge ${student.status === 'Correct' ? 'badge-green' : 'badge-gray'}`}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td>{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="results-expand-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedStudent(student);
-                          }}
-                        >
-                          View
-                        </button>
-                      </td>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-215 text-sm">
+                <thead>
+                  <tr>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Student</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Total Score</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Questions</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Status</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Last Submitted</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedRows.map((student) => {
+                    return (
+                      <tr className="results-student-row" key={student.studentId}>
+                        <td className="border-t border-slate-100 px-4 py-3">
+                          <div className="font-semibold text-slate-800">{student.studentName || 'Student'}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {student.questionCount} question{student.questionCount === 1 ? '' : 's'} attempted
+                          </div>
+                        </td>
+                        <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.totalScore}/{student.totalMaxScore} ({student.averagePercent}%)</td>
+                        <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.questionCount}</td>
+                        <td className="border-t border-slate-100 px-4 py-3">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${student.status === 'Correct' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {student.status}
+                          </span>
+                        </td>
+                        <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</td>
+                        <td className="border-t border-slate-100 px-4 py-3">
+                          <button
+                            type="button"
+                            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedStudent(student);
+                            }}
+                          >
+                            View
+                          </button>
+                        </td>
                       </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-            <div className="results-pagination">
-              <div className="results-pagination-meta">
+            <div className="space-y-3 p-4 md:hidden">
+              {paginatedRows.map((student) => (
+                <div key={`mobile-${student.studentId}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="font-semibold text-slate-800">{student.studentName || 'Student'}</div>
+                  <div className="mt-1 text-xs text-slate-500">{student.questionCount} question{student.questionCount === 1 ? '' : 's'} attempted</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div><strong>Score:</strong> {student.totalScore}/{student.totalMaxScore}</div>
+                    <div><strong>Average:</strong> {student.averagePercent}%</div>
+                    <div><strong>Status:</strong> {student.status}</div>
+                    <div><strong>Questions:</strong> {student.questionCount}</div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</div>
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+                    onClick={() => setSelectedStudent(student)}
+                  >
+                    View details
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+              <div className="text-xs font-medium text-slate-500">
                 Showing {pageStart}-{pageEnd} of {filteredRows.length} students
               </div>
-              <div className="results-pagination-actions">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="results-pagination-button"
+                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                   disabled={boundedPage === 1}
                 >
                   Previous
                 </button>
-                <span className="results-pagination-current">Page {boundedPage} of {totalPages}</span>
+                <span className="text-xs font-medium text-slate-500">Page {boundedPage} of {totalPages}</span>
                 <button
                   type="button"
-                  className="results-pagination-button"
+                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                   disabled={boundedPage === totalPages}
                 >
@@ -414,20 +596,20 @@ const ResultsDashboard: React.FC = () => {
           role="presentation"
         >
           <div
-            className="results-modal"
+            className="results-modal w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label={`${selectedStudent.studentName} question marks`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="results-modal-header">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4">
               <div>
-                <h2 className="results-modal-title">{selectedStudent.studentName}</h2>
-                <p className="results-modal-subtitle">Question-by-question marks breakdown</p>
+                <h2 className="m-0 text-xl font-semibold text-slate-900">{selectedStudent.studentName}</h2>
+                <p className="mt-1 text-sm text-slate-500">Question-by-question marks breakdown</p>
               </div>
               <button
                 type="button"
-                className="results-modal-close"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-rose-300 hover:text-rose-600"
                 onClick={() => setSelectedStudent(null)}
                 aria-label="Close details"
               >
@@ -435,28 +617,29 @@ const ResultsDashboard: React.FC = () => {
               </button>
             </div>
 
-            <div className="results-modal-summary">
-              <div className="results-modal-summary-item">
-                <span>Total Score</span>
-                <strong>{selectedStudent.totalScore}/{selectedStudent.totalMaxScore}</strong>
+            <div className="grid gap-3 p-5 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Total Score</span>
+                <strong className="mt-1 block text-xl text-slate-900">{selectedStudent.totalScore}/{selectedStudent.totalMaxScore}</strong>
               </div>
-              <div className="results-modal-summary-item">
-                <span>Average</span>
-                <strong>{selectedStudent.averagePercent}%</strong>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Average</span>
+                <strong className="mt-1 block text-xl text-slate-900">{selectedStudent.averagePercent}%</strong>
               </div>
-              <div className="results-modal-summary-item">
-                <span>Questions</span>
-                <strong>{selectedStudent.questionCount}</strong>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Questions</span>
+                <strong className="mt-1 block text-xl text-slate-900">{selectedStudent.questionCount}</strong>
               </div>
             </div>
 
-            <div className="results-modal-table-wrap">
-              <table className="results-subtable">
+            <div className="mx-5 mb-5 overflow-hidden rounded-xl border border-slate-200">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-105 text-sm">
                 <thead>
                   <tr>
-                    <th>Question No.</th>
-                    <th>Marks Scored</th>
-                    <th>Max Marks</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Question No.</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Marks Scored</th>
+                    <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-violet-700">Max Marks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -464,13 +647,14 @@ const ResultsDashboard: React.FC = () => {
                     .sort((a, b) => Number(a.questionId) - Number(b.questionId))
                     .map((detail, index) => (
                       <tr key={`${selectedStudent.studentId}-${String(detail.questionId)}-${index}`}>
-                        <td>Question {index + 1}</td>
-                        <td>{detail.score ?? 0}</td>
-                        <td>{detail.maxScore ?? 0}</td>
+                        <td className="border-t border-slate-100 px-4 py-3">Question {index + 1}</td>
+                        <td className="border-t border-slate-100 px-4 py-3">{detail.score ?? 0}</td>
+                        <td className="border-t border-slate-100 px-4 py-3">{detail.maxScore ?? 0}</td>
                       </tr>
                     ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           </div>
         </div>

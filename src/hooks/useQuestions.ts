@@ -14,5 +14,8 @@ export const useQuestions = (examId?: string) => {
     [examId],
   );
 
-  return useAsyncData(loader, [loader], 'Failed to load questions.');
+  return useAsyncData(loader, [loader], 'Failed to load questions.', {
+    cacheKey: `questions:${examId || 'none'}`,
+    cacheTtlMs: 30_000,
+  });
 };

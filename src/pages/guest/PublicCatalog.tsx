@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { usePublicCatalog } from '../../hooks/usePublicCatalog';
 
 const PublicCatalog: React.FC = () => {
@@ -58,15 +59,7 @@ const PublicCatalog: React.FC = () => {
   }, [classGroups, courses, searchTerm, selectedCourseId]);
 
   if (loading) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1>Course Catalog</h1>
-          <p>Loading the public courses and class groups exposed by the backend.</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading catalog...</div>
-      </div>
-    );
+    return <PageSkeleton title="Course Catalog" rows={6} />;
   }
 
   if (error) {
@@ -94,7 +87,7 @@ const PublicCatalog: React.FC = () => {
       </div>
 
       <div className="content-card" style={{ marginBottom: '20px' }}>
-        <div className="content-card-body" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '12px' }}>
+        <div className="content-card-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) auto', gap: '12px' }}>
           <input
             className="form-input"
             placeholder="Search courses, teachers, or class groups..."
@@ -115,7 +108,7 @@ const PublicCatalog: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.2fr_1fr]">
         <div className="content-card">
           <div className="content-card-header">
             <h2>Courses</h2>
@@ -135,7 +128,7 @@ const PublicCatalog: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', fontSize: '12px', color: '#666' }}>
                     <span>Teacher: {course.teacherName || 'Not listed'}</span>
-                    <span>Course ID: {course.id}</span>
+                    <span>{courseGroupsCount[String(course.id)] || 0} group{(courseGroupsCount[String(course.id)] || 0) === 1 ? '' : 's'} available</span>
                   </div>
                 </div>
               ))
@@ -158,10 +151,10 @@ const PublicCatalog: React.FC = () => {
                   <div key={String(group.id)} style={{ border: '1px solid #e8e8ee', borderRadius: '12px', padding: '14px' }}>
                     <div style={{ fontWeight: 700, marginBottom: '6px' }}>{group.name}</div>
                     <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>
-                      Course: {parentCourse?.name || group.courseId}
+                      Course: {parentCourse?.name || 'Course'}
                     </div>
                     <div style={{ fontSize: '12px', color: '#666' }}>
-                      Group ID: {group.id}
+                      Public class group
                     </div>
                   </div>
                 );

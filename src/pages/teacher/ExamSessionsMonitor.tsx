@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, sessionApi, userApi, type CourseEnrollment, type Exam, type PlatformUser, type Session } from '../../api';
+import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { filterCoursesByTeacher, isSessionComplete } from '../../utils/queryme';
-import './TeacherPages.css';
 
 type SessionStatus = 'in_progress' | 'submitted' | 'expired';
+type SessionFilter = 'all' | SessionStatus;
 
 interface SessionRow {
   id: string;
@@ -14,7 +15,7 @@ interface SessionRow {
   startedAt: string;
   submittedAt: string;
   expiresAt: string;
-  sandboxSchema: string;
+  hasWorkspace: boolean;
   status: SessionStatus;
 }
 
@@ -216,6 +217,8 @@ const ExamSessionsMonitor: React.FC = () => {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [statusFilter, setStatusFilter] = useState<SessionFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const mapSessionsToRows = (
     sessions: Session[],
@@ -239,7 +242,7 @@ const ExamSessionsMonitor: React.FC = () => {
         startedAt: session.startedAt || '',
         submittedAt: session.submittedAt || '',
         expiresAt: session.expiresAt || '',
-        sandboxSchema: String(session.sandboxSchema || 'N/A'),
+        hasWorkspace: Boolean(String(session.sandboxSchema || '').trim()),
         status: getSessionStatus(session),
       };
     })
@@ -367,6 +370,29 @@ const ExamSessionsMonitor: React.FC = () => {
     expired: rows.filter((row) => row.status === 'expired').length,
   }), [rows]);
 
+  const selectedExamTitle = useMemo(() => {
+    const selectedExam = examOptions.find((exam) => String(exam.id) === selectedExamId);
+    return selectedExam?.title || '';
+  }, [examOptions, selectedExamId]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return rows.filter((row) => {
+      const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
+      const matchesSearch = !normalizedQuery
+        || row.studentName.toLowerCase().includes(normalizedQuery)
+        || row.studentEmail.toLowerCase().includes(normalizedQuery);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [rows, searchQuery, statusFilter]);
+
+  const hasActionableRows = useMemo(
+    () => filteredRows.some((row) => row.status === 'in_progress'),
+    [filteredRows],
+  );
+
   const forceSubmit = async (sessionId: string) => {
     setError(null);
 
@@ -381,7 +407,7 @@ const ExamSessionsMonitor: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="teacher-page" style={{ padding: '24px' }}>Loading sessions monitor...</div>;
+    return <PageSkeleton title="Exam Sessions Monitor" rows={5} />;
   }
 
   return (
@@ -390,62 +416,127 @@ const ExamSessionsMonitor: React.FC = () => {
         <div>
           <h1 className="builder-title" style={{ fontSize: '18px' }}>Exam Sessions Monitor</h1>
           <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#666' }}>
-            Track active, submitted, and expired sessions returned by the session module.
+            Track live progress, submitted attempts, and expired sessions for each exam.
           </p>
         </div>
       </div>
 
       <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div className="sess-stat-bar">
-          <span className="sess-stat-pill active"><span className="sess-stat-num sess-stat-all">{counts.all}</span><span className="sess-stat-label">All Sessions</span></span>
-          <span className="sess-stat-pill"><span className="sess-stat-num sess-stat-in_progress">{counts.in_progress}</span><span className="sess-stat-label">In Progress</span></span>
-          <span className="sess-stat-pill"><span className="sess-stat-num sess-stat-submitted">{counts.submitted}</span><span className="sess-stat-label">Submitted</span></span>
-          <span className="sess-stat-pill"><span className="sess-stat-num sess-stat-expired">{counts.expired}</span><span className="sess-stat-label">Expired</span></span>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <button
+            type="button"
+            className="sess-stat-pill"
+            onClick={() => setStatusFilter('all')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', border: statusFilter === 'all' ? '1px solid #10b981' : undefined, boxShadow: statusFilter === 'all' ? '0 0 0 2px rgba(16,185,129,0.12)' : undefined, cursor: 'pointer' }}
+          >
+            <span className="sess-stat-num sess-stat-all">{counts.all}</span>
+            <span className="sess-stat-label">All Sessions</span>
+          </button>
+          <button
+            type="button"
+            className="sess-stat-pill"
+            onClick={() => setStatusFilter('in_progress')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', border: statusFilter === 'in_progress' ? '1px solid #10b981' : undefined, boxShadow: statusFilter === 'in_progress' ? '0 0 0 2px rgba(16,185,129,0.12)' : undefined, cursor: 'pointer' }}
+          >
+            <span className="sess-stat-num sess-stat-in_progress">{counts.in_progress}</span>
+            <span className="sess-stat-label">In Progress</span>
+          </button>
+          <button
+            type="button"
+            className="sess-stat-pill"
+            onClick={() => setStatusFilter('submitted')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', border: statusFilter === 'submitted' ? '1px solid #10b981' : undefined, boxShadow: statusFilter === 'submitted' ? '0 0 0 2px rgba(16,185,129,0.12)' : undefined, cursor: 'pointer' }}
+          >
+            <span className="sess-stat-num sess-stat-submitted">{counts.submitted}</span>
+            <span className="sess-stat-label">Submitted</span>
+          </button>
+          <button
+            type="button"
+            className="sess-stat-pill"
+            onClick={() => setStatusFilter('expired')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', border: statusFilter === 'expired' ? '1px solid #10b981' : undefined, boxShadow: statusFilter === 'expired' ? '0 0 0 2px rgba(16,185,129,0.12)' : undefined, cursor: 'pointer' }}
+          >
+            <span className="sess-stat-num sess-stat-expired">{counts.expired}</span>
+            <span className="sess-stat-label">Expired</span>
+          </button>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <select className="form-input" value={selectedExamId} onChange={(event) => setSelectedExamId(event.target.value)}>
-            <option value="">Select exam</option>
-            {examOptions.map((exam) => (
-              <option key={String(exam.id)} value={String(exam.id)}>
-                {exam.title}
-              </option>
-            ))}
-          </select>
+        <div className="builder-card" style={{ display: 'grid', gap: '10px' }}>
+          <div>
+            <h2 className="students-card-title" style={{ margin: 0 }}>Exam Filter</h2>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
+              Select an exam to review student session activity.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <select className="form-input" value={selectedExamId} onChange={(event) => setSelectedExamId(event.target.value)}>
+              <option value="">Select exam</option>
+              {examOptions.map((exam) => (
+                <option key={String(exam.id)} value={String(exam.id)}>
+                  {exam.title}
+                </option>
+              ))}
+            </select>
+            <input
+              className="form-input"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search student name or email"
+              aria-label="Search students"
+            />
+          </div>
+
+          {selectedExamTitle && (
+            <div style={{ fontSize: '12px', color: '#475569' }}>
+              Viewing sessions for: <strong>{selectedExamTitle}</strong>
+            </div>
+          )}
         </div>
 
-        {error && <div style={{ color: '#e53e3e' }}>{error}</div>}
+        {error && (
+          <div className="enroll-alert enroll-alert-error" style={{ margin: 0 }}>
+            {error}
+          </div>
+        )}
 
         <div className="builder-card" style={{ padding: 0, overflow: 'hidden' }}>
           {loadingSessions ? (
-            <div style={{ padding: '24px' }}>Loading sessions...</div>
-          ) : rows.length === 0 ? (
+            <InlineSkeleton rows={5} className="p-6" />
+          ) : filteredRows.length === 0 ? (
             <div className="students-empty" style={{ padding: '60px 20px' }}>
-              <p>Select an exam to inspect its session lifecycle.</p>
+              <p>
+                {rows.length === 0
+                  ? 'Select an exam to inspect its session lifecycle.'
+                  : 'No sessions match your current status filter and search.'}
+              </p>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="sess-table">
+            <>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="sess-table min-w-245">
                 <thead>
                   <tr>
-                    <th>Student</th>
-                    <th>Status</th>
-                    <th>Started</th>
-                    <th>Submitted</th>
-                    <th>Time Remaining</th>
-                    <th>Sandbox</th>
-                    <th></th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Student</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Status</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Started</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Submitted</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Time Remaining</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Workspace</th>
+                    {hasActionableRows && <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {filteredRows.map((row) => (
                     <tr key={row.id}>
                       <td>
-                        <div className="sess-student-cell">
-                          <span className="sess-avatar">{row.studentName[0] || '?'}</span>
-                          <div>
-                            <div className="sess-student-name">{row.studentName}</div>
-                            <div className="sess-student-email">{row.studentEmail}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ width: '28px', height: '28px', borderRadius: '999px', background: '#dcfce7', color: '#166534', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>
+                            {row.studentName[0] || '?'}
+                          </span>
+                          <div style={{ display: 'grid', gap: '2px' }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{row.studentName}</div>
+                            <div style={{ fontSize: '12px', color: '#64748b' }}>{row.studentEmail}</div>
                           </div>
                         </div>
                       </td>
@@ -458,24 +549,69 @@ const ExamSessionsMonitor: React.FC = () => {
                       <td>{row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</td>
                       <td>
                         {row.status === 'in_progress' && row.expiresAt
-                          ? formatRemaining(Math.max(0, new Date(row.expiresAt).getTime() - now))
+                          ? (
+                            <span style={{ fontWeight: 600, color: '#0369a1' }}>
+                              {formatRemaining(Math.max(0, new Date(row.expiresAt).getTime() - now))}
+                            </span>
+                            )
                           : row.status === 'expired'
                             ? 'Expired'
                             : '—'}
                       </td>
-                      <td><span className="sess-sandbox-badge">{row.sandboxSchema}</span></td>
                       <td>
-                        {row.status === 'in_progress' && (
-                          <button className="sess-force-btn" onClick={() => void forceSubmit(row.id)}>
-                            Force Submit
-                          </button>
-                        )}
+                        <span className="badge badge-gray">
+                          {row.hasWorkspace ? 'Provisioned' : 'Pending'}
+                        </span>
                       </td>
+                      {hasActionableRows && (
+                        <td>
+                          {row.status === 'in_progress' && (
+                            <button className="sess-force-btn" onClick={() => void forceSubmit(row.id)}>
+                              Force Submit
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+
+              <div className="space-y-3 p-4 md:hidden">
+                {filteredRows.map((row) => (
+                  <div key={`mobile-${row.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-slate-800">{row.studentName}</div>
+                        <div className="mt-1 text-xs text-slate-500">{row.studentEmail}</div>
+                      </div>
+                      <span className={`sess-status-chip ${row.status === 'in_progress' ? 'sess-status-active' : row.status === 'submitted' ? 'sess-status-submitted' : 'sess-status-expired'}`}>
+                        {row.status.replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                      <div><strong>Started:</strong> {row.startedAt ? new Date(row.startedAt).toLocaleString() : 'N/A'}</div>
+                      <div><strong>Submitted:</strong> {row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</div>
+                      <div>
+                        <strong>Remaining:</strong>{' '}
+                        {row.status === 'in_progress' && row.expiresAt
+                          ? formatRemaining(Math.max(0, new Date(row.expiresAt).getTime() - now))
+                          : row.status === 'expired' ? 'Expired' : '—'}
+                      </div>
+                      <div><strong>Workspace:</strong> {row.hasWorkspace ? 'Provisioned' : 'Pending'}</div>
+                    </div>
+
+                    {row.status === 'in_progress' && (
+                      <button className="sess-force-btn mt-3 w-full" onClick={() => void forceSubmit(row.id)}>
+                        Force Submit
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

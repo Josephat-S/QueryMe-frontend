@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { courseApi, examApi, sandboxApi, userApi, type Exam, type PlatformUser } from '../../api';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastProvider';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getUserDisplayName, normalizeExamStatus } from '../../utils/queryme';
@@ -214,7 +215,7 @@ const SystemSettings: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading admin controls...</div>;
+    return <PageSkeleton title="System Settings & Controls" rows={5} />;
   }
 
   return (
@@ -224,7 +225,12 @@ const SystemSettings: React.FC = () => {
         <p>Administrative controls backed by real exam and sandbox management endpoints.</p>
       </div>
 
-      {loadError && <div style={{ marginBottom: '16px', color: '#e53e3e' }}>{loadError}</div>}
+      {loadError && (
+        <div className="ss-inline-alert ss-inline-alert-page" role="alert" aria-live="assertive">
+          <strong>Unable to load controls.</strong>
+          <span>{loadError}</span>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '22px' }}>
         <div className="content-card" style={{ gridColumn: '1 / -1' }}>
@@ -297,12 +303,15 @@ const SystemSettings: React.FC = () => {
                   Selected student: {selectedStudentLabel || 'None'}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn btn-secondary" onClick={() => void inspectSandbox()} disabled={!sandboxExamId || !sandboxStudentId}>Inspect</button>
-                <button className="btn btn-secondary" onClick={() => void destroySandbox()} disabled={!sandboxExamId || !sandboxStudentId}>Delete Sandbox</button>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary w-full sm:w-auto" onClick={() => void inspectSandbox()} disabled={!sandboxExamId || !sandboxStudentId}>Inspect</button>
+                <button className="btn btn-secondary w-full sm:w-auto" onClick={() => void destroySandbox()} disabled={!sandboxExamId || !sandboxStudentId}>Delete Sandbox</button>
               </div>
               {sandboxError && (
-                <div style={{ color: '#e53e3e', fontSize: '12px' }}>{sandboxError}</div>
+                <div className="ss-inline-alert" role="alert" aria-live="assertive">
+                  <strong>Sandbox action failed.</strong>
+                  <span>{sandboxError}</span>
+                </div>
               )}
               <textarea className="form-input" value={sandboxInfo} readOnly style={{ minHeight: '220px', fontFamily: 'monospace' }} />
             </div>
@@ -315,10 +324,13 @@ const SystemSettings: React.FC = () => {
             <h2>Global Exam Administration</h2>
           </div>
           {examActionError && (
-            <div style={{ padding: '0 24px 12px', color: '#e53e3e', fontSize: '12px' }}>{examActionError}</div>
+            <div className="ss-inline-alert ss-inline-alert-card" role="alert" aria-live="assertive">
+              <strong>Exam action failed.</strong>
+              <span>{examActionError}</span>
+            </div>
           )}
-          <div className="content-card-body" style={{ padding: 0, overflowX: 'auto' }}>
-            <table className="data-table">
+          <div className="content-card-body hidden md:block" style={{ padding: 0, overflowX: 'auto' }}>
+            <table className="data-table min-w-175">
               <thead>
                 <tr>
                   <th>Exam</th>
@@ -362,6 +374,37 @@ const SystemSettings: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="space-y-3 p-4 md:hidden">
+            {exams.map((exam) => (
+              <div key={`mobile-${String(exam.id)}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="font-semibold text-slate-800">{exam.title?.trim() || 'Untitled Exam'}</div>
+                <div className="mt-1 text-xs text-slate-500">{coursesById[String(exam.courseId)] || getCourseName(exam.course) || 'Unknown Course'}</div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <div><strong>Status:</strong> {normalizeExamStatus(exam.status) || 'N/A'}</div>
+                  <div><strong>Visibility:</strong> {String(exam.visibilityMode || 'N/A')}</div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {normalizeExamStatus(exam.status) === 'DRAFT' && (
+                    <>
+                      <button className="btn btn-sm btn-primary" onClick={() => void runExamAction(String(exam.id), 'publish')}>Publish</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => void runExamAction(String(exam.id), 'delete')}>Delete</button>
+                    </>
+                  )}
+                  {normalizeExamStatus(exam.status) === 'PUBLISHED' && (
+                    <>
+                      <button className="btn btn-sm btn-secondary" onClick={() => void runExamAction(String(exam.id), 'unpublish')}>Unpublish</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => void runExamAction(String(exam.id), 'close')}>Close</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+            {exams.length === 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+                No exams are available for administrative control.
+              </div>
+            )}
           </div>
         </div>
       </div>
