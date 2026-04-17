@@ -28,7 +28,7 @@ const AdminProfile: React.FC = () => {
       setError(null);
 
       try {
-        const admins = await userApi.getAdmins(controller.signal);
+        const admins = await userApi.getAdmins({ signal: controller.signal });
         const admin = admins.find((candidate) => String(candidate.id) === user.id || candidate.email === user.email);
 
         if (!controller.signal.aborted) {

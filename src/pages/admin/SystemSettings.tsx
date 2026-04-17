@@ -73,20 +73,34 @@ const SystemSettings: React.FC = () => {
   const [examActionError, setExamActionError] = useState<string | null>(null);
 
   const loadControls = useCallback(async (signal?: AbortSignal): Promise<SystemControlsData> => {
-    const courses = await courseApi.getCourses(signal);
+    const [courses, students] = await Promise.all([
+      courseApi.getCourses({ page: 1, pageSize: 50, signal }),
+      userApi.getStudents({ page: 1, pageSize: 50, signal }).catch(() => [] as PlatformUser[]),
+    ]);
+
     const coursesById = courses.reduce<Record<string, string>>((accumulator, course) => {
       accumulator[String(course.id)] = course.name;
       return accumulator;
     }, {});
 
-    const examLists = await Promise.all(
-      courses.map((course) => examApi.getExamsByCourse(String(course.id), signal).catch(() => [] as Exam[])),
-    );
-    const students = await userApi.getStudents(signal).catch(() => [] as PlatformUser[]);
+    // Fetch exams for first 15 courses using controlled chunks to avoid parallel request spikes
+    const examsToFetch = courses.slice(0, 15);
+    const CHUNK_SIZE = 3;
+    const allExams: Exam[] = [];
+
+    for (let i = 0; i < examsToFetch.length; i += CHUNK_SIZE) {
+      const chunk = examsToFetch.slice(i, i + CHUNK_SIZE);
+      if (signal?.aborted) break;
+
+      const examLists = await Promise.all(
+        chunk.map((course) => examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[])),
+      );
+      allExams.push(...examLists.flat());
+    }
 
     return {
       coursesById,
-      exams: examLists.flat(),
+      exams: allExams,
       students,
     };
   }, []);

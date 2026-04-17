@@ -30,8 +30,8 @@ const TeacherProfile: React.FC = () => {
 
       try {
         const [teachers, allCourses] = await Promise.all([
-          userApi.getTeachers(controller.signal),
-          courseApi.getCourses(controller.signal),
+          userApi.getTeachers({ signal: controller.signal }),
+          courseApi.getCourses({ signal: controller.signal }),
         ]);
 
         const teacher = teachers.find((candidate) => String(candidate.id) === user.id || candidate.email === user.email);

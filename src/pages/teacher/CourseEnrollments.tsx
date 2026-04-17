@@ -275,9 +275,9 @@ const CourseEnrollments: React.FC = () => {
     }
 
     const [allCourses, allStudents, enrollmentRows] = await Promise.all([
-      courseApi.getCourses(signal),
-      userApi.getStudents(signal),
-      courseApi.getEnrollments(signal).catch(() => [] as CourseEnrollment[]),
+      courseApi.getCourses({ page: 1, pageSize: 100, signal }),
+      userApi.getStudents({ page: 1, pageSize: 100, signal }),
+      courseApi.getEnrollments({ page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]),
     ]);
 
     const teacherCourses = filterCoursesByTeacher(allCourses, user.id);
@@ -307,8 +307,8 @@ const CourseEnrollments: React.FC = () => {
     }
 
     const [courseEnrollments, courseClassGroups] = await Promise.all([
-      courseApi.getEnrollmentsByCourse(courseId, signal).catch(() => [] as CourseEnrollment[]),
-      courseApi.getClassGroupsByCourse(courseId, signal).catch(() => [] as ClassGroup[]),
+      courseApi.getEnrollmentsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]),
+      courseApi.getClassGroupsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as ClassGroup[]),
     ]);
 
     setEnrollments(courseEnrollments);
@@ -317,10 +317,10 @@ const CourseEnrollments: React.FC = () => {
 
   const refreshMembershipState = useCallback(async (courseId: string, signal?: AbortSignal) => {
     const [allStudents, everyEnrollment, courseEnrollments, courseClassGroups] = await Promise.all([
-      userApi.getStudents(signal),
-      courseApi.getEnrollments(signal).catch(() => [] as CourseEnrollment[]),
-      courseId ? courseApi.getEnrollmentsByCourse(courseId, signal).catch(() => [] as CourseEnrollment[]) : Promise.resolve([] as CourseEnrollment[]),
-      courseId ? courseApi.getClassGroupsByCourse(courseId, signal).catch(() => [] as ClassGroup[]) : Promise.resolve([] as ClassGroup[]),
+      userApi.getStudents({ page: 1, pageSize: 100, signal }),
+      courseApi.getEnrollments({ page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]),
+      courseId ? courseApi.getEnrollmentsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]) : Promise.resolve([] as CourseEnrollment[]),
+      courseId ? courseApi.getClassGroupsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as ClassGroup[]) : Promise.resolve([] as ClassGroup[]),
     ]);
     const teacherCourseIds = new Set(courses.map((course) => String(course.id)));
 

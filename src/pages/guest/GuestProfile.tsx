@@ -29,7 +29,7 @@ const GuestProfile: React.FC = () => {
       setError(null);
 
       try {
-        const guests = await userApi.getGuests(controller.signal);
+        const guests = await userApi.getGuests({ signal: controller.signal });
         const guest = guests.find((candidate) => String(candidate.id) === user.id || candidate.email === user.email);
 
         if (!controller.signal.aborted) {

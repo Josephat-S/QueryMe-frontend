@@ -4,7 +4,7 @@ import { courseApi, examApi, sessionApi, userApi, type CourseEnrollment, type Ex
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, isSessionComplete } from '../../utils/queryme';
+import { isSessionComplete } from '../../utils/queryme';
 
 type SessionStatus = 'in_progress' | 'submitted' | 'expired';
 type SessionFilter = 'all' | SessionStatus;
@@ -267,15 +267,11 @@ const ExamSessionsMonitor: React.FC = () => {
       setError(null);
 
       try {
-        const [courses, students] = await Promise.all([
-          courseApi.getCourses(controller.signal),
-          userApi.getStudents(controller.signal),
+        const [, students, exams] = await Promise.all([
+          courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal }),
+          userApi.getStudents({ page: 1, pageSize: 100, signal: controller.signal }),
+          examApi.getPublishedExams({ page: 1, pageSize: 100, signal: controller.signal }).catch(() => [] as Exam[]),
         ]);
-
-        const accessibleCourses = filterCoursesByTeacher(courses, user.id);
-        const examLists = await Promise.all(
-          accessibleCourses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [] as Exam[])),
-        );
 
         if (!controller.signal.aborted) {
           const byId = students.reduce<Record<string, PlatformUser>>((acc, student) => {
@@ -292,7 +288,7 @@ const ExamSessionsMonitor: React.FC = () => {
 
             return acc;
           }, {});
-          const exams = examLists.flat();
+
           setStudentsById(byId);
           setExamOptions(exams);
           if (exams[0]) {
@@ -327,21 +323,20 @@ const ExamSessionsMonitor: React.FC = () => {
     void (async () => {
       const selectedExam = examOptions.find((exam) => String(exam.id) === selectedExamId);
       const selectedCourseId = selectedExam?.courseId ? String(selectedExam.courseId) : '';
-      const enrollmentProfiles = selectedCourseId
-        ? await courseApi.getEnrollmentsByCourse(selectedCourseId, controller.signal)
-          .then((enrollments) => buildEnrollmentProfiles(enrollments))
-          .catch(() => ({} as Record<string, StudentProfile>))
-        : {};
-
-      if (!controller.signal.aborted) {
-        setEnrollmentProfilesById(enrollmentProfiles);
-      }
-
-      const sessions = await sessionApi.getSessionsByExam(selectedExamId, controller.signal);
+      
+      const [enrollments, sessions] = await Promise.all([
+        selectedCourseId 
+          ? courseApi.getEnrollmentsByCourse(selectedCourseId, { page: 1, pageSize: 100, signal: controller.signal }).catch(() => [] as CourseEnrollment[])
+          : Promise.resolve([] as CourseEnrollment[]),
+        sessionApi.getSessionsByExam(selectedExamId, { page: 1, pageSize: 100, signal: controller.signal }).catch(() => [] as Session[])
+      ]);
 
       if (controller.signal.aborted) {
         return;
       }
+
+      const enrollmentProfiles = buildEnrollmentProfiles(enrollments);
+      setEnrollmentProfilesById(enrollmentProfiles);
 
       const nextRows = mapSessionsToRows(sessions, studentsById, enrollmentProfiles);
       if (!controller.signal.aborted) {

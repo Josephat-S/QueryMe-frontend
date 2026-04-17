@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { courseApi, examApi, questionApi, type Course, type Exam } from '../../api';
+import { courseApi, examApi, type Course, type Exam } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastContext';
@@ -33,20 +33,28 @@ const ExamsList: React.FC = () => {
       return;
     }
 
-    const allCourses = await courseApi.getCourses(signal);
+    const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal });
     const accessibleCourses = filterCoursesByTeacher(allCourses, user.id);
 
-    const examLists = await Promise.all(
-      accessibleCourses.map((course) =>
-        examApi.getExamsByCourse(String(course.id), signal).catch(() => [] as Exam[]),
-      ),
-    );
+    // Fetch exams in chunks to avoid overwhelming the browser connection pool
+    const uniqueExams: Exam[] = [];
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < accessibleCourses.length; i += CHUNK_SIZE) {
+      const chunk = accessibleCourses.slice(i, i + CHUNK_SIZE);
+      if (signal?.aborted) break;
 
-    const uniqueExams = [...new Map(
-      examLists
-        .flat()
-        .map((exam) => [String(exam.id), exam]),
-    ).values()];
+      const examLists = await Promise.all(
+        chunk.map((course) =>
+          examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[]),
+        ),
+      );
+
+      examLists.flat().forEach((exam) => {
+        if (!uniqueExams.find(existing => String(existing.id) === String(exam.id))) {
+          uniqueExams.push(exam);
+        }
+      });
+    }
 
     const courseNamesById = accessibleCourses.reduce<Record<string, string>>((acc, course) => {
       const id = String(course.id || '');
@@ -59,28 +67,16 @@ const ExamsList: React.FC = () => {
       return acc;
     }, {});
 
-    const questionCounts = await Promise.all(
-      uniqueExams.map(async (exam) => {
-        const examId = String(exam.id);
-
-        try {
-          const questions = await questionApi.getQuestions(examId, signal);
-          return [examId, questions.length] as const;
-        } catch {
-          return [examId, exam.questions?.length ?? 0] as const;
-        }
-      }),
-    );
-
-    const questionCountByExamId = new Map(questionCounts);
-
+    // We'll skip upfront question counts for all exams to speed up load.
+    // If the backend didn't include them, we show a dash or 0.
+    
     const rows = uniqueExams
       .map((exam) => ({
         id: String(exam.id),
         title: exam.title,
         course: exam.course?.name?.trim() || courseNamesById[String(exam.courseId)] || 'Unknown Course',
         status: normalizeExamStatus(exam.status) || 'DRAFT',
-        questionsCount: questionCountByExamId.get(String(exam.id)) ?? 0,
+        questionsCount: exam.questions?.length ?? 0,
         maxAttempts: exam.maxAttempts ?? 1,
         visibilityMode: String(exam.visibilityMode || 'N/A'),
       }))

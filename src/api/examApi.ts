@@ -1,6 +1,7 @@
 import axiosInstance from './axiosInstance';
 import { unwrapResponse } from './helpers';
 import type { CreateExamPayload, Exam, UpdateExamPayload } from '../types/queryme';
+import type { PaginationParams } from './userApi';
 
 const EXAM_MUTATION_TIMEOUT_MS = 120000;
 
@@ -10,13 +11,19 @@ export const examApi = {
     return unwrapResponse(response);
   },
 
-  async getExamsByCourse(courseId: string, signal?: AbortSignal): Promise<Exam[]> {
-    const response = await axiosInstance.get<Exam[]>(`/exams/course/${courseId}`, { signal });
+  async getExamsByCourse(courseId: string, params?: PaginationParams): Promise<Exam[]> {
+    const response = await axiosInstance.get<Exam[]>(`/exams/course/${courseId}`, { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
-  async getPublishedExams(signal?: AbortSignal): Promise<Exam[]> {
-    const response = await axiosInstance.get<Exam[]>('/exams/published', { signal });
+  async getPublishedExams(params?: PaginationParams): Promise<Exam[]> {
+    const response = await axiosInstance.get<Exam[]>('/exams/published', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { resultApi } from '../../api';
+import { resultApi, type Exam, type Session } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { usePublishedExams } from '../../hooks/usePublishedExams';
 import { useStudentSessions } from '../../hooks/useStudentSessions';
@@ -70,21 +70,31 @@ const AvailableExams: React.FC = () => {
           }
         });
 
-      const marksEntries = await Promise.all(
-        [...completedByExam.entries()].map(async ([examId, latestSession]) => {
-          try {
-            const result = await resultApi.getSessionResult(String(latestSession.id), controller.signal);
+      const completedSessions = [...completedByExam.entries()];
+      const marksEntries: [string, string][] = [];
+      const CHUNK_SIZE = 4;
 
-            if (result.totalMaxScore != null && result.totalMaxScore > 0 && result.totalScore != null) {
-              return [examId, `${result.totalScore}/${result.totalMaxScore}`] as const;
+      for (let i = 0; i < Math.min(completedSessions.length, 12); i += CHUNK_SIZE) {
+        const chunk = completedSessions.slice(i, i + CHUNK_SIZE);
+        if (controller.signal.aborted) break;
+
+        const results = await Promise.all(
+          chunk.map(async ([examId, latestSession]) => {
+            try {
+              const result = await resultApi.getSessionResult(String(latestSession.id), controller.signal);
+
+              if (result.totalMaxScore != null && result.totalMaxScore > 0 && result.totalScore != null) {
+                return [examId, `${result.totalScore}/${result.totalMaxScore}`] as [string, string];
+              }
+
+              return [examId, 'N/A'] as [string, string];
+            } catch {
+              return [examId, 'N/A'] as [string, string];
             }
-
-            return [examId, 'N/A'] as const;
-          } catch {
-            return [examId, 'N/A'] as const;
-          }
-        }),
-      );
+          }),
+        );
+        marksEntries.push(...results);
+      }
 
       if (!controller.signal.aborted) {
         setMarksByExamId(Object.fromEntries(marksEntries));

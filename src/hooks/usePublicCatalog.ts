@@ -10,8 +10,8 @@ export interface PublicCatalogData {
 export const usePublicCatalog = () => {
   const loader = useCallback(async (signal: AbortSignal): Promise<PublicCatalogData> => {
     const [courses, classGroups] = await Promise.all([
-      courseApi.getCourses(signal),
-      courseApi.getClassGroups(signal),
+      courseApi.getCourses({ page: 1, pageSize: 100, signal }),
+      courseApi.getClassGroups({ page: 1, pageSize: 100, signal }),
     ]);
 
     return { courses, classGroups };

@@ -3,11 +3,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { courseApi, examApi, resultApi, type Exam, type TeacherResultRow } from '../../api';
+import { examApi, resultApi, type Exam, type TeacherResultRow } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, getCourseName, normalizeExamStatus } from '../../utils/queryme';
+import { getCourseName } from '../../utils/queryme';
 
 type ScoreBand = 'all' | 'high' | 'medium' | 'low';
 type StudentStatusFilter = 'all' | 'correct' | 'reviewed';
@@ -80,13 +80,7 @@ const ResultsDashboard: React.FC = () => {
       setError(null);
 
       try {
-        const courses = await courseApi.getCourses(controller.signal);
-        const accessibleCourses = filterCoursesByTeacher(courses, user.id);
-        const examLists = await Promise.all(
-          accessibleCourses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [] as Exam[])),
-        );
-
-        const availableExams = examLists.flat().filter((exam) => normalizeExamStatus(exam.status) !== 'DRAFT');
+        const availableExams = await examApi.getPublishedExams({ page: 1, pageSize: 100, signal: controller.signal });
 
         if (!controller.signal.aborted) {
           setExamOptions(availableExams);
@@ -119,7 +113,7 @@ const ResultsDashboard: React.FC = () => {
     setLoadingRows(true);
     setError(null);
 
-    void resultApi.getExamDashboard(selectedExamId, controller.signal)
+    void resultApi.getExamDashboard(selectedExamId, { signal: controller.signal })
       .then((response) => {
         if (!controller.signal.aborted) {
           setRows(response);

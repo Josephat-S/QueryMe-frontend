@@ -63,6 +63,7 @@ const AdminHome: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingExams, setLoadingExams] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,19 +74,13 @@ const AdminHome: React.FC = () => {
       setError(null);
 
       try {
-        const [admins, teachers, students, guests, courses] = await Promise.all([
-          userApi.getAdmins(controller.signal).catch(() => [] as PlatformUser[]),
-          userApi.getTeachers(controller.signal).catch(() => [] as PlatformUser[]),
-          userApi.getStudents(controller.signal).catch(() => [] as PlatformUser[]),
-          userApi.getGuests(controller.signal).catch(() => [] as PlatformUser[]),
-          courseApi.getCourses(controller.signal),
+        const [admins, teachers, students, guests, initialCourses] = await Promise.all([
+          userApi.getAdmins({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
+          userApi.getTeachers({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
+          userApi.getStudents({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
+          userApi.getGuests({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
+          courseApi.getCourses({ page: 1, pageSize: 5, signal: controller.signal }),
         ]);
-
-        const examLists = await Promise.all(
-          courses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [] as Exam[])),
-        );
-
-        const allExams = examLists.flat();
 
         if (!controller.signal.aborted) {
           setUsers([
@@ -94,16 +89,26 @@ const AdminHome: React.FC = () => {
             ...withPlatformUserRole(students, 'STUDENT'),
             ...withPlatformUserRole(guests, 'GUEST'),
           ]);
-          setCourses(courses);
-          setExams(allExams);
+          setCourses(initialCourses);
+          setLoading(false); // Show overview content immediately
+        }
+
+        // Now fetch exams for the first 3 courses in the background
+        setLoadingExams(initialCourses.length > 0);
+        const coursesToFetchExams = initialCourses.slice(0, 3);
+        const examLists = await Promise.all(
+          coursesToFetchExams.map((course) => examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[])),
+        );
+
+        if (!controller.signal.aborted) {
+          setExams(examLists.flat());
+          setLoadingExams(false);
         }
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(extractErrorMessage(err, 'Failed to load the admin overview.'));
-        }
-      } finally {
-        if (!controller.signal.aborted) {
           setLoading(false);
+          setLoadingExams(false);
         }
       }
     };
@@ -175,8 +180,8 @@ const AdminHome: React.FC = () => {
 
       <div className="stat-grid" style={{ marginBottom: '28px' }}>
         <div className="stat-card"><div className="stat-card-value">{users.length}</div><div className="stat-card-label">Total Users</div></div>
-        <div className="stat-card"><div className="stat-card-value">{exams.length}</div><div className="stat-card-label">Total Exams</div></div>
-        <div className="stat-card"><div className="stat-card-value">{exams.filter((exam) => String(exam.status || '').toUpperCase() === 'PUBLISHED').length}</div><div className="stat-card-label">Published Exams</div></div>
+        <div className="stat-card"><div className="stat-card-value">{loadingExams ? '...' : exams.length}</div><div className="stat-card-label">Total Exams</div></div>
+        <div className="stat-card"><div className="stat-card-value">{loadingExams ? '...' : exams.filter((exam) => String(exam.status || '').toUpperCase() === 'PUBLISHED').length}</div><div className="stat-card-label">Published Exams</div></div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -225,47 +230,65 @@ const AdminHome: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {recentActivities.map((activity) => (
-                  <tr key={activity.id}>
-                    <td>
-                      <span className={`badge ${activity.kind === 'CLOSED' ? 'badge-red' : 'badge-green'}`}>
-                        {activity.kind === 'CLOSED' ? 'Closed' : 'Published'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{activity.examTitle}</div>
-                      <div style={{ fontSize: '12px', color: '#888' }}>By {activity.actorName}</div>
-                    </td>
-                    <td>{activity.courseName}</td>
-                    <td>{new Date(activity.occurredAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-                {recentActivities.length === 0 && (
+                {loadingExams ? (
                   <tr>
                     <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
-                      No recent exam publish or close activity was returned yet.
+                      Loading recent activities...
                     </td>
                   </tr>
+                ) : (
+                  <>
+                    {recentActivities.map((activity) => (
+                      <tr key={activity.id}>
+                        <td>
+                          <span className={`badge ${activity.kind === 'CLOSED' ? 'badge-red' : 'badge-green'}`}>
+                            {activity.kind === 'CLOSED' ? 'Closed' : 'Published'}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{activity.examTitle}</div>
+                          <div style={{ fontSize: '12px', color: '#888' }}>By {activity.actorName}</div>
+                        </td>
+                        <td>{activity.courseName}</td>
+                        <td>{new Date(activity.occurredAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {recentActivities.length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
+                          No recent exam publish or close activity was returned yet.
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </tbody>
             </table>
           </div>
           <div className="space-y-3 p-4 md:hidden">
-            {recentActivities.map((activity) => (
-              <div key={`mobile-${activity.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <span className={`badge ${activity.kind === 'CLOSED' ? 'badge-red' : 'badge-green'}`}>
-                  {activity.kind === 'CLOSED' ? 'Closed' : 'Published'}
-                </span>
-                <div className="mt-2 font-semibold text-slate-800">{activity.examTitle}</div>
-                <div className="mt-1 text-xs text-slate-500">By {activity.actorName}</div>
-                <div className="mt-1 text-xs text-slate-500">{activity.courseName}</div>
-                <div className="mt-2 text-xs text-slate-500">{new Date(activity.occurredAt).toLocaleString()}</div>
-              </div>
-            ))}
-            {recentActivities.length === 0 && (
+            {loadingExams ? (
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
-                No recent exam publish or close activity was returned yet.
+                Loading recent activities...
               </div>
+            ) : (
+              <>
+                {recentActivities.map((activity) => (
+                  <div key={`mobile-${activity.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <span className={`badge ${activity.kind === 'CLOSED' ? 'badge-red' : 'badge-green'}`}>
+                      {activity.kind === 'CLOSED' ? 'Closed' : 'Published'}
+                    </span>
+                    <div className="mt-2 font-semibold text-slate-800">{activity.examTitle}</div>
+                    <div className="mt-1 text-xs text-slate-500">By {activity.actorName}</div>
+                    <div className="mt-1 text-xs text-slate-500">{activity.courseName}</div>
+                    <div className="mt-2 text-xs text-slate-500">{new Date(activity.occurredAt).toLocaleString()}</div>
+                  </div>
+                ))}
+                {recentActivities.length === 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+                    No recent exam publish or close activity was returned yet.
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -50,10 +50,14 @@ const UserManagement: React.FC = () => {
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
   const loadUsers = async (signal?: AbortSignal) => {
+    // We should ideally fetch based on current page and pageSize
+    // but the current UI logic aggregates them.
+    // For now, let's at least keep it as is but it will use the new API signature.
+    // Limited to first 100 users per role to avoid heavy load.
     const [teachers, students, guests] = await Promise.all([
-      userApi.getTeachers(signal).catch(() => [] as PlatformUser[]),
-      userApi.getStudents(signal).catch(() => [] as PlatformUser[]),
-      userApi.getGuests(signal).catch(() => [] as PlatformUser[]),
+      userApi.getTeachers({ page: 1, pageSize: 100, signal }).catch(() => [] as PlatformUser[]),
+      userApi.getStudents({ page: 1, pageSize: 100, signal }).catch(() => [] as PlatformUser[]),
+      userApi.getGuests({ page: 1, pageSize: 100, signal }).catch(() => [] as PlatformUser[]),
     ]);
 
     setUsers(

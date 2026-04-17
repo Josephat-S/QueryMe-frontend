@@ -26,7 +26,7 @@ const TeacherCourses: React.FC = () => {
       return;
     }
 
-    const allCourses = await courseApi.getCourses(signal);
+    const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal });
     setCourses(filterCoursesByTeacher(allCourses, user.id));
   }, [user]);
 

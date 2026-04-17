@@ -9,6 +9,7 @@ import type {
   CreateCoursePayload,
   Identifier,
 } from '../types/queryme';
+import type { PaginationParams } from './userApi';
 
 const normalizeIdentifier = (value: Identifier): string | number => {
   if (typeof value === 'number') {
@@ -25,8 +26,11 @@ const toEnrollmentRequest = (payload: CourseEnrollmentPayload) => ({
 });
 
 export const courseApi = {
-  async getCourses(signal?: AbortSignal): Promise<Course[]> {
-    const response = await axiosInstance.get<Course[]>('/courses', { signal });
+  async getCourses(params?: PaginationParams): Promise<Course[]> {
+    const response = await axiosInstance.get<Course[]>('/courses', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
@@ -35,13 +39,19 @@ export const courseApi = {
     return unwrapResponse(response);
   },
 
-  async getClassGroups(signal?: AbortSignal): Promise<ClassGroup[]> {
-    const response = await axiosInstance.get<ClassGroup[]>('/class-groups', { signal });
+  async getClassGroups(params?: PaginationParams): Promise<ClassGroup[]> {
+    const response = await axiosInstance.get<ClassGroup[]>('/class-groups', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
-  async getClassGroupsByCourse(courseId: string, signal?: AbortSignal): Promise<ClassGroup[]> {
-    const response = await axiosInstance.get<ClassGroup[]>(`/class-groups/course/${courseId}`, { signal });
+  async getClassGroupsByCourse(courseId: string, params?: PaginationParams): Promise<ClassGroup[]> {
+    const response = await axiosInstance.get<ClassGroup[]>(`/class-groups/course/${courseId}`, { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
@@ -50,18 +60,27 @@ export const courseApi = {
     return unwrapResponse(response);
   },
 
-  async getEnrollments(signal?: AbortSignal): Promise<CourseEnrollment[]> {
-    const response = await axiosInstance.get<CourseEnrollment[]>('/course-enrollments', { signal });
+  async getEnrollments(params?: PaginationParams): Promise<CourseEnrollment[]> {
+    const response = await axiosInstance.get<CourseEnrollment[]>('/course-enrollments', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
-  async getEnrollmentsByCourse(courseId: string, signal?: AbortSignal): Promise<CourseEnrollment[]> {
-    const response = await axiosInstance.get<CourseEnrollment[]>(`/course-enrollments/course/${courseId}`, { signal });
+  async getEnrollmentsByCourse(courseId: string, params?: PaginationParams): Promise<CourseEnrollment[]> {
+    const response = await axiosInstance.get<CourseEnrollment[]>(`/course-enrollments/course/${courseId}`, { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
-  async getEnrollmentsByStudent(studentId: string, signal?: AbortSignal): Promise<CourseEnrollment[]> {
-    const response = await axiosInstance.get<CourseEnrollment[]>(`/course-enrollments/student/${studentId}`, { signal });
+  async getEnrollmentsByStudent(studentId: string, params?: PaginationParams): Promise<CourseEnrollment[]> {
+    const response = await axiosInstance.get<CourseEnrollment[]>(`/course-enrollments/student/${studentId}`, { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 

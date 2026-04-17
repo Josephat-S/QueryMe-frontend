@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
 import type { NavItem } from '../../layout/DashboardLayout';
+import { PageSkeleton } from '../../components/PageSkeleton';
 
-import AdminHome from './AdminHome';
-import UserManagement from './UserManagement';
-import SystemSettings from './SystemSettings';
-import Reports from './Reports';
-import SystemLogs from './SystemLogs';
-import AdminProfile from './AdminProfile';
+const AdminHome = lazy(() => import('./AdminHome'));
+const UserManagement = lazy(() => import('./UserManagement'));
+const SystemSettings = lazy(() => import('./SystemSettings'));
+const Reports = lazy(() => import('./Reports'));
+const SystemLogs = lazy(() => import('./SystemLogs'));
+const AdminProfile = lazy(() => import('./AdminProfile'));
 
 const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -47,15 +48,17 @@ const adminNav: NavItem[] = [
 const AdminDashboard: React.FC = () => {
   return (
     <DashboardLayout navItems={adminNav} portalTitle="Admin Portal" accentColor="#e53e3e">
-      <Routes>
-        <Route index element={<AdminHome />} />
-        <Route path="users" element={<UserManagement />} />
-        <Route path="settings" element={<SystemSettings />} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="logs" element={<SystemLogs />} />
-        <Route path="profile" element={<AdminProfile />} />
-        <Route path="*" element={<Navigate to="/admin" replace />} />
-      </Routes>
+      <Suspense fallback={<PageSkeleton />}>
+        <Routes>
+          <Route index element={<AdminHome />} />
+          <Route path="users" element={<UserManagement />} />
+          <Route path="settings" element={<SystemSettings />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="logs" element={<SystemLogs />} />
+          <Route path="profile" element={<AdminProfile />} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
+        </Routes>
+      </Suspense>
     </DashboardLayout>
   );
 };

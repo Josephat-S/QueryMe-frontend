@@ -9,7 +9,7 @@ export const useStudentSessions = (studentId?: string) => {
         return Promise.resolve([]);
       }
 
-      return sessionApi.getSessionsByStudent(studentId, signal);
+      return sessionApi.getSessionsByStudent(studentId, { signal });
     },
     [studentId],
   );

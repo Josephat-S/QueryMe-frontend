@@ -3,7 +3,7 @@ import { ThemeCtx } from './ThemeContextValue';
 
 export type ThemeMode = 'light' | 'dark';
 
-interface ThemeContextValue {
+export interface ThemeContextValue {
   theme: ThemeMode;
   isDarkMode: boolean;
   toggleTheme: () => void;

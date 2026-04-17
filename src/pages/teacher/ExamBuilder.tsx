@@ -97,7 +97,7 @@ const ExamBuilder: React.FC = () => {
       setError(null);
 
       try {
-        const allCourses = await courseApi.getCourses(controller.signal);
+        const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal });
         const teacherCourses = filterCoursesByTeacher(allCourses, user.id);
 
         if (!controller.signal.aborted) {
@@ -236,7 +236,7 @@ const ExamBuilder: React.FC = () => {
       return null;
     }
 
-    const existingCourseExams = await examApi.getExamsByCourse(courseId);
+    const existingCourseExams = await examApi.getExamsByCourse(courseId, { page: 1, pageSize: 50 });
     const matchingDrafts = existingCourseExams
       .filter((candidate) => normalizeExamStatus(candidate.status) === 'DRAFT')
       .filter((candidate) => candidate.title.trim() === title.trim())

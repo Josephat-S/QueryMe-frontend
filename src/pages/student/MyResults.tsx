@@ -40,34 +40,44 @@ const MyResults: React.FC = () => {
 
       try {
         const [sessions, courses] = await Promise.all([
-          sessionApi.getSessionsByStudent(user.id, controller.signal),
-          courseApi.getCourses(controller.signal).catch(() => []),
+          sessionApi.getSessionsByStudent(user.id, { page: 1, pageSize: 100, signal: controller.signal }),
+          courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal }).catch(() => []),
         ]);
         const courseNamesById = new Map(courses.map((course) => [String(course.id), course.name]));
 
-        const rows = await Promise.all(
-          sessions.map(async (session) => {
-            const [exam, sessionResult] = await Promise.all([
-              examApi.getExam(String(session.examId), controller.signal).catch(() => null),
-              resultApi.getSessionResult(String(session.id), controller.signal).catch(() => null),
-            ]);
-            const courseNameFromExam = exam?.course?.name?.trim();
-            const courseNameFromMap = exam?.courseId ? courseNamesById.get(String(exam.courseId)) : undefined;
+        const sessionSlice = sessions.slice(0, 15);
+        const rows: ResultRow[] = [];
+        const CHUNK_SIZE = 3;
 
-            return {
-              sessionId: String(session.id),
-              examId: String(session.examId),
-              title: exam?.title || 'Exam',
-              course: courseNameFromExam || courseNameFromMap || 'Unknown Course',
-              submittedAt: session.submittedAt || session.startedAt || '',
-              visible: sessionResult?.visible ?? false,
-              totalScore: sessionResult?.totalScore ?? 0,
-              totalMaxScore: sessionResult?.totalMaxScore ?? 0,
-              visibilityMode: String(sessionResult?.visibilityMode || exam?.visibilityMode || 'N/A'),
-              questions: sessionResult?.questions || [],
-            } satisfies ResultRow;
-          }),
-        );
+        for (let i = 0; i < sessionSlice.length; i += CHUNK_SIZE) {
+          const chunk = sessionSlice.slice(i, i + CHUNK_SIZE);
+          if (controller.signal.aborted) break;
+
+          const chunkRows = await Promise.all(
+            chunk.map(async (session) => {
+              const [exam, sessionResult] = await Promise.all([
+                examApi.getExam(String(session.examId), controller.signal).catch(() => null),
+                resultApi.getSessionResult(String(session.id), controller.signal).catch(() => null),
+              ]);
+              const courseNameFromExam = exam?.course?.name?.trim();
+              const courseNameFromMap = exam?.courseId ? courseNamesById.get(String(exam.courseId)) : undefined;
+
+              return {
+                sessionId: String(session.id),
+                examId: String(session.examId),
+                title: exam?.title || 'Exam',
+                course: courseNameFromExam || courseNameFromMap || 'Unknown Course',
+                submittedAt: session.submittedAt || session.startedAt || '',
+                visible: sessionResult?.visible ?? false,
+                totalScore: sessionResult?.totalScore ?? 0,
+                totalMaxScore: sessionResult?.totalMaxScore ?? 0,
+                visibilityMode: String(sessionResult?.visibilityMode || exam?.visibilityMode || 'N/A'),
+                questions: sessionResult?.questions || [],
+              } satisfies ResultRow;
+            }),
+          );
+          rows.push(...chunkRows);
+        }
 
         if (!controller.signal.aborted) {
           setResults(

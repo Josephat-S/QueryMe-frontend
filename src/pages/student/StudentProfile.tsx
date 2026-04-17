@@ -39,7 +39,7 @@ const StudentProfile: React.FC = () => {
       return user.id;
     }
 
-    const sessions = await sessionApi.getSessionsByStudent(user.id, signal).catch(() => []);
+    const sessions = await sessionApi.getSessionsByStudent(user.id, { signal }).catch(() => []);
     const fallbackId = sessions
       .map((session) => String(session.studentId || ''))
       .find((id) => isNumericId(id));

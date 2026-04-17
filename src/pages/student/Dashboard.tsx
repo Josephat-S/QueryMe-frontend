@@ -1,12 +1,14 @@
-import React, { useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
 import type { NavItem } from '../../layout/DashboardLayout';
-import StudentHome from './StudentHome';
-import AvailableExams from './AvailableExams';
-import ExamSession from './ExamSession';
-import MyResults from './MyResults';
-import StudentProfile from './StudentProfile';
+import { PageSkeleton } from '../../components/PageSkeleton';
+
+const StudentHome = lazy(() => import('./StudentHome'));
+const AvailableExams = lazy(() => import('./AvailableExams'));
+const ExamSession = lazy(() => import('./ExamSession'));
+const MyResults = lazy(() => import('./MyResults'));
+const StudentProfile = lazy(() => import('./StudentProfile'));
 
 // SVG icon components for nav
 const HomeIcon = () => (
@@ -123,15 +125,17 @@ const StudentDashboard: React.FC = () => {
   return (
     <DashboardLayout navItems={studentNav} portalTitle="Student Portal" accentColor="#6a3cb0">
       <StudentClipboardGuard>
-        <Routes>
-          <Route index element={<StudentHome />} />
-          <Route path="exams" element={<AvailableExams />} />
-          <Route path="exam-session" element={<ExamSession />} />
-          <Route path="exam-session/:examId" element={<ExamSession />} />
-          <Route path="results" element={<MyResults />} />
-          <Route path="profile" element={<StudentProfile />} />
-          <Route path="*" element={<Navigate to="/student" replace />} />
-        </Routes>
+        <Suspense fallback={<PageSkeleton title="Student Portal" />}>
+          <Routes>
+            <Route index element={<StudentHome />} />
+            <Route path="exams" element={<AvailableExams />} />
+            <Route path="exam-session" element={<ExamSession />} />
+            <Route path="exam-session/:examId" element={<ExamSession />} />
+            <Route path="results" element={<MyResults />} />
+            <Route path="profile" element={<StudentProfile />} />
+            <Route path="*" element={<Navigate to="/student" replace />} />
+          </Routes>
+        </Suspense>
       </StudentClipboardGuard>
     </DashboardLayout>
   );

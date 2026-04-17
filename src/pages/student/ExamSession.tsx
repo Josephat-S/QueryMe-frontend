@@ -64,7 +64,7 @@ const ExamSession: React.FC = () => {
         const [loadedExam, loadedQuestions, studentSessions] = await Promise.all([
           examApi.getExam(examId, controller.signal),
           questionApi.getQuestions(examId, controller.signal),
-          sessionApi.getSessionsByStudent(user.id, controller.signal),
+          sessionApi.getSessionsByStudent(user.id, { signal: controller.signal }),
         ]);
 
         if (controller.signal.aborted) {

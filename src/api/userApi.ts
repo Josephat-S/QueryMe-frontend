@@ -2,9 +2,25 @@ import axiosInstance from './axiosInstance';
 import { toBackendUserPayload, unwrapResponse } from './helpers';
 import type { PlatformUser, UserRegistrationPayload, UserUpdatePayload } from '../types/queryme';
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PaginationParams {
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}
+
 export const userApi = {
-  async getAdmins(signal?: AbortSignal): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/admins', { signal });
+  async getAdmins(params?: PaginationParams): Promise<PlatformUser[]> {
+    const response = await axiosInstance.get<PlatformUser[]>('/admins', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
@@ -18,8 +34,11 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
-  async getTeachers(signal?: AbortSignal): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/teachers', { signal });
+  async getTeachers(params?: PaginationParams): Promise<PlatformUser[]> {
+    const response = await axiosInstance.get<PlatformUser[]>('/teachers', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
@@ -33,8 +52,11 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
-  async getStudents(signal?: AbortSignal): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/students', { signal });
+  async getStudents(params?: PaginationParams): Promise<PlatformUser[]> {
+    const response = await axiosInstance.get<PlatformUser[]>('/students', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 
@@ -58,8 +80,11 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
-  async getGuests(signal?: AbortSignal): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/guests', { signal });
+  async getGuests(params?: PaginationParams): Promise<PlatformUser[]> {
+    const response = await axiosInstance.get<PlatformUser[]>('/guests', { 
+      params: { page: params?.page, pageSize: params?.pageSize },
+      signal: params?.signal 
+    });
     return unwrapResponse(response);
   },
 

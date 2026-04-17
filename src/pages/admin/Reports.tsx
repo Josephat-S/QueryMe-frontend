@@ -8,6 +8,7 @@ interface CourseMetrics {
   course: Course;
   exams: Exam[];
   resultRows: TeacherResultRow[];
+  isLoaded: boolean;
 }
 
 const Reports: React.FC = () => {
@@ -36,31 +37,56 @@ const Reports: React.FC = () => {
       setError(null);
 
       try {
-        const courses = await courseApi.getCourses(controller.signal);
-        const reportRows = await Promise.all(
-          courses.map(async (course) => {
-            const exams = await examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [] as Exam[]);
-            const resultRows = await Promise.all(
-              exams.map((exam) => resultApi.getExamDashboard(String(exam.id), controller.signal).catch(() => [] as TeacherResultRow[])),
-            );
+        const courses = await courseApi.getCourses({ signal: controller.signal });
+        
+        // Initial state with just courses to show the table immediately
+        const initialMetrics = courses.map(course => ({
+          course,
+          exams: [],
+          resultRows: [],
+          isLoaded: false,
+        }));
+        
+        setMetrics(initialMetrics);
+        setLoading(false); // Show table now
 
-            return {
-              course,
-              exams,
-              resultRows: resultRows.flat(),
-            } satisfies CourseMetrics;
-          }),
-        );
+        // Now fetch metrics in background using controlled chunks to avoid overwhelming the browser
+        const CHUNK_SIZE = 4;
+        for (let i = 0; i < courses.length; i += CHUNK_SIZE) {
+          const chunk = courses.slice(i, i + CHUNK_SIZE);
+          
+          if (controller.signal.aborted) break;
 
-        if (!controller.signal.aborted) {
-          setMetrics(reportRows);
+          const reportRows = await Promise.all(
+            chunk.map(async (course) => {
+              try {
+                const exams = await examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[]);
+                const resultRows = await Promise.all(
+                  exams.map((exam) => resultApi.getExamDashboard(String(exam.id), { signal: controller.signal }).catch(() => [] as TeacherResultRow[])),
+                );
+
+                return {
+                  courseId: String(course.id),
+                  exams,
+                  resultRows: resultRows.flat(),
+                  isLoaded: true,
+                };
+              } catch {
+                return { courseId: String(course.id), exams: [], resultRows: [], isLoaded: true };
+              }
+            }),
+          );
+
+          if (!controller.signal.aborted) {
+            setMetrics(prev => prev.map(m => {
+              const data = reportRows.find(r => r.courseId === String(m.course.id));
+              return data ? { ...m, exams: data.exams, resultRows: data.resultRows, isLoaded: true } : m;
+            }));
+          }
         }
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(extractErrorMessage(err, 'Failed to load platform reports.'));
-        }
-      } finally {
-        if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
@@ -140,15 +166,15 @@ const Reports: React.FC = () => {
                   return (
                     <tr key={String(metric.course.id)}>
                       <td style={{ fontWeight: 600 }}>{metric.course.name}</td>
-                      <td>{metric.exams.length}</td>
-                      <td>{averageScore}%</td>
+                      <td>{metric.isLoaded ? metric.exams.length : '...'}</td>
+                      <td>{metric.isLoaded ? `${averageScore}%` : '...'}</td>
                       <td>
                         <button
                           className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
                           onClick={() => setSelectedCourseId(String(metric.course.id))}
-                          disabled={isSelected}
+                          disabled={isSelected || !metric.isLoaded}
                         >
-                          {isSelected ? 'Selected' : 'Inspect'}
+                          {isSelected ? 'Selected' : metric.isLoaded ? 'Inspect' : 'Loading...'}
                         </button>
                       </td>
                     </tr>
@@ -178,15 +204,15 @@ const Reports: React.FC = () => {
                 <div key={`course-mobile-${String(metric.course.id)}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="font-semibold text-slate-800">{metric.course.name}</div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <div><strong>Exams:</strong> {metric.exams.length}</div>
-                    <div><strong>Average:</strong> {averageScore}%</div>
+                    <div><strong>Exams:</strong> {metric.isLoaded ? metric.exams.length : '...'}</div>
+                    <div><strong>Average:</strong> {metric.isLoaded ? `${averageScore}%` : '...'}</div>
                   </div>
                   <button
                     className={`btn btn-sm mt-3 w-full ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => setSelectedCourseId(String(metric.course.id))}
-                    disabled={isSelected}
+                    disabled={isSelected || !metric.isLoaded}
                   >
-                    {isSelected ? 'Selected' : 'Inspect'}
+                    {isSelected ? 'Selected' : metric.isLoaded ? 'Inspect' : 'Loading...'}
                   </button>
                 </div>
               );
@@ -205,9 +231,9 @@ const Reports: React.FC = () => {
           </div>
           <div className="content-card-body">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.exams}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Exams</div></div>
-              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.averageScore}%</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Average Score</div></div>
-              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{activeMetrics.correctRate}%</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Correct Rate</div></div>
+              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{visibleMetrics.every(m => m.isLoaded) ? activeMetrics.exams : '...'}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Exams</div></div>
+              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{visibleMetrics.every(m => m.isLoaded) ? `${activeMetrics.averageScore}%` : '...'}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Average Score</div></div>
+              <div className="metric-box"><div style={{ fontSize: '24px', fontWeight: 700 }}>{visibleMetrics.every(m => m.isLoaded) ? `${activeMetrics.correctRate}%` : '...'}</div><div style={{ fontSize: '11px', opacity: 0.7 }}>Correct Rate</div></div>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { courseApi, examApi, sessionApi, userApi, type Session } from '../../api';
+import { courseApi, examApi, sessionApi, userApi, type Exam, type Session } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getUserDisplayName } from '../../utils/queryme';
@@ -74,10 +74,11 @@ const SystemLogs: React.FC = () => {
       setError(null);
 
       try {
-        const [courses, teachers, students] = await Promise.all([
-          courseApi.getCourses(controller.signal),
-          userApi.getTeachers(controller.signal).catch(() => []),
-          userApi.getStudents(controller.signal).catch(() => []),
+        const [courses, teachers, students, publishedExams] = await Promise.all([
+          courseApi.getCourses({ page: 1, pageSize: 20, signal: controller.signal }),
+          userApi.getTeachers({ page: 1, pageSize: 50, signal: controller.signal }).catch(() => []),
+          userApi.getStudents({ page: 1, pageSize: 50, signal: controller.signal }).catch(() => []),
+          examApi.getPublishedExams({ page: 1, pageSize: 20, signal: controller.signal }).catch(() => []),
         ]);
         const courseById = new Map(courses.map((course) => [String(course.id), course]));
 
@@ -96,10 +97,13 @@ const SystemLogs: React.FC = () => {
           });
         });
 
-        const examLists = await Promise.all(
-          courses.map((course) => examApi.getExamsByCourse(String(course.id), controller.signal).catch(() => [])),
+        // Combine published exams with some course-specific exams (first 5 courses)
+        const additionalExams = await Promise.all(
+          courses.slice(0, 5).map((course) => examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[])),
         );
-        const exams = examLists.flat();
+        const allExams = [...publishedExams, ...additionalExams.flat()];
+        // De-duplicate exams by ID
+        const exams = Array.from(new Map(allExams.map(exam => [String(exam.id), exam])).values());
 
         const createdEvents: ActivityRow[] = exams
           .filter((exam) => Boolean(exam.createdAt))
@@ -140,39 +144,53 @@ const SystemLogs: React.FC = () => {
             };
           });
 
-        const sessionLists = await Promise.all(
-          exams.map(async (exam) => {
-            const sessions = await sessionApi.getSessionsByExam(String(exam.id), controller.signal).catch(() => [] as Session[]);
-
-            return sessions
-              .filter((session) => Boolean(session.submittedAt || session.isSubmitted))
-              .map((session) => {
-                const sessionRecord = asRecord(session);
-                const sessionStudentIdentifiers = [String(session.studentId), ...getKnownIdentifiers(sessionRecord)];
-                const matchedStudent = sessionStudentIdentifiers
-                  .map((identifier) => studentById.get(identifier))
-                  .find(Boolean);
-                const inlineName = getPossiblePersonName(sessionRecord);
-                const studentName = inlineName || getUserDisplayName(matchedStudent);
-
-                return {
-                  id: `session-finished-${String(session.id)}`,
-                  event: 'STUDENT_FINISHED',
-                  examTitle: exam.title || 'Untitled Exam',
-                  actorName: studentName === 'Unknown User' ? 'Unknown Person' : studentName,
-                  statusLabel: 'FINISHED',
-                  occurredAt: String(session.submittedAt || session.startedAt || ''),
-                } satisfies ActivityRow;
-              });
-          }),
-        );
-
         if (!controller.signal.aborted) {
-          setRows(
-            [...createdEvents, ...sessionLists.flat()]
-              .filter((row) => Boolean(row.occurredAt))
-              .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime()),
+          setRows(createdEvents);
+        }
+
+        // Fetch sessions for the first 10 exams using controlled chunks to avoid massive waterfall
+        const examsToFetch = exams.slice(0, 10);
+        const CHUNK_SIZE = 3;
+        
+        for (let i = 0; i < examsToFetch.length; i += CHUNK_SIZE) {
+          const chunk = examsToFetch.slice(i, i + CHUNK_SIZE);
+          if (controller.signal.aborted) break;
+
+          const sessionLists = await Promise.all(
+            chunk.map(async (exam) => {
+              const sessions = await sessionApi.getSessionsByExam(String(exam.id), { page: 1, pageSize: 20, signal: controller.signal }).catch(() => [] as Session[]);
+
+              return sessions
+                .filter((session) => Boolean(session.submittedAt || session.isSubmitted))
+                .map((session) => {
+                  const sessionRecord = asRecord(session);
+                  const sessionStudentIdentifiers = [String(session.studentId), ...getKnownIdentifiers(sessionRecord)];
+                  const matchedStudent = sessionStudentIdentifiers
+                    .map((identifier) => studentById.get(identifier))
+                    .find(Boolean);
+                  const inlineName = getPossiblePersonName(sessionRecord);
+                  const studentName = inlineName || getUserDisplayName(matchedStudent);
+
+                  return {
+                    id: `session-finished-${String(session.id)}`,
+                    event: 'STUDENT_FINISHED',
+                    examTitle: exam.title || 'Untitled Exam',
+                    actorName: studentName === 'Unknown User' ? 'Unknown Person' : studentName,
+                    statusLabel: 'FINISHED',
+                    occurredAt: String(session.submittedAt || session.startedAt || ''),
+                  } satisfies ActivityRow;
+                });
+            }),
           );
+
+          if (!controller.signal.aborted) {
+            setRows((prev) => {
+              const newRows = [...prev, ...sessionLists.flat()];
+              // De-duplicate and sort
+              return Array.from(new Map(newRows.map(r => [r.id, r])).values())
+                .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime());
+            });
+          }
         }
       } catch (err) {
         if (!controller.signal.aborted) {
