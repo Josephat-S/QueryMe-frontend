@@ -1,11 +1,23 @@
-import { useCallback } from 'react';
-import { examApi, type Exam } from '../api';
-import { useAsyncData } from './useAsyncData';
+import { useQuery } from '@tanstack/react-query';
+import { examApi } from '../api';
 
 export const usePublishedExams = () => {
-  const loader = useCallback((signal: AbortSignal): Promise<Exam[]> => examApi.getPublishedExams({ signal }), []);
-  return useAsyncData(loader, [loader], 'Failed to load exams.', {
-    cacheKey: 'published-exams',
-    cacheTtlMs: 45_000,
+  const {
+    data = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['published-exams'],
+    queryFn: ({ signal }) => examApi.getPublishedExams({ signal }),
+    staleTime: 45_000,
   });
+
+  return {
+    data,
+    loading,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refresh: refetch,
+    setData: () => {},
+  };
 };

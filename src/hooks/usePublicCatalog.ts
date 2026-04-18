@@ -1,6 +1,5 @@
-import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { courseApi, type ClassGroup, type Course } from '../api';
-import { useAsyncData } from './useAsyncData';
 
 export interface PublicCatalogData {
   courses: Course[];
@@ -8,17 +7,28 @@ export interface PublicCatalogData {
 }
 
 export const usePublicCatalog = () => {
-  const loader = useCallback(async (signal: AbortSignal): Promise<PublicCatalogData> => {
-    const [courses, classGroups] = await Promise.all([
-      courseApi.getCourses({ page: 1, pageSize: 100, signal }),
-      courseApi.getClassGroups({ page: 1, pageSize: 100, signal }),
-    ]);
-
-    return { courses, classGroups };
-  }, []);
-
-  return useAsyncData(loader, [loader], 'Failed to load the public course catalog.', {
-    cacheKey: 'public-catalog',
-    cacheTtlMs: 60_000,
+  const {
+    data,
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['public-catalog'],
+    queryFn: async ({ signal }): Promise<PublicCatalogData> => {
+      const [courses, classGroups] = await Promise.all([
+        courseApi.getCourses({ page: 1, pageSize: 100, signal }),
+        courseApi.getClassGroups({ page: 1, pageSize: 100, signal }),
+      ]);
+      return { courses, classGroups };
+    },
+    staleTime: 60_000,
   });
+
+  return {
+    data: data || null,
+    loading,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refresh: refetch,
+    setData: () => {},
+  };
 };

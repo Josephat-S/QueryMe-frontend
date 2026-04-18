@@ -1,18 +1,27 @@
-import { useCallback } from 'react';
-import { resultApi, type StudentExamResult } from '../api';
-import { useAsyncData } from './useAsyncData';
+import { useQuery } from '@tanstack/react-query';
+import { resultApi } from '../api';
 
 export const useSessionResult = (sessionId?: string) => {
-  const loader = useCallback(
-    (signal: AbortSignal): Promise<StudentExamResult | null> => {
-      if (!sessionId) {
-        return Promise.resolve(null);
-      }
-
+  const {
+    data,
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['session-result', sessionId],
+    queryFn: async ({ signal }) => {
+      if (!sessionId) return null;
       return resultApi.getSessionResult(sessionId, signal);
     },
-    [sessionId],
-  );
+    enabled: !!sessionId,
+    staleTime: 60_000,
+  });
 
-  return useAsyncData(loader, [loader], 'Failed to load result details.');
+  return {
+    data: data || null,
+    loading,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refresh: refetch,
+    setData: () => {},
+  };
 };

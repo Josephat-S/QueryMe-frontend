@@ -1,11 +1,23 @@
-import { useCallback } from 'react';
-import { courseApi, type Course } from '../api';
-import { useAsyncData } from './useAsyncData';
+import { useQuery } from '@tanstack/react-query';
+import { courseApi } from '../api';
 
 export const useCourses = () => {
-  const loader = useCallback((signal: AbortSignal): Promise<Course[]> => courseApi.getCourses({ page: 1, pageSize: 100, signal }), []);
-  return useAsyncData(loader, [loader], 'Failed to load courses.', {
-    cacheKey: 'courses',
-    cacheTtlMs: 60_000,
+  const {
+    data = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['courses'],
+    queryFn: ({ signal }) => courseApi.getCourses({ page: 1, pageSize: 100, signal }),
+    staleTime: 60_000,
   });
+
+  return {
+    data,
+    loading,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refresh: refetch,
+    setData: () => {}, // Tanstack query handles mutations differently (useMutation/setQueryData), providing empty stub for backwards compatibility
+  };
 };

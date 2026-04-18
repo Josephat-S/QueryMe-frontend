@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { courseApi, userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
@@ -10,56 +11,37 @@ const TeacherProfile: React.FC = () => {
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');
-  const [courses, setCourses] = useState<Array<{ id: string; name: string }>>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const { data: profileData, isLoading: loading, error: fetchError } = useQuery({
+    queryKey: ['teacher-profile', user?.id],
+    queryFn: async ({ signal }) => {
+      if (!user) return null;
+      const [teachers, allCourses] = await Promise.all([
+        userApi.getTeachers({ signal }),
+        courseApi.getCourses({ signal }),
+      ]);
+      const teacher = teachers.find((candidate) => String(candidate.id) === user.id || candidate.email === user.email);
+      const ownedCourses = filterCoursesByTeacher(allCourses, user.id).map((course) => ({
+        id: String(course.id),
+        name: course.name,
+      }));
+      return { teacher, ownedCourses };
+    },
+    enabled: !!user,
+  });
+
   useEffect(() => {
-    const controller = new AbortController();
+    if (profileData?.teacher) {
+      if (!name) setName(String(profileData.teacher.name || profileData.teacher.fullName || user?.name || ''));
+      if (!email) setEmail(String(profileData.teacher.email || user?.email || ''));
+    }
+  }, [profileData, user]);
 
-    const loadProfile = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const [teachers, allCourses] = await Promise.all([
-          userApi.getTeachers({ signal: controller.signal }),
-          courseApi.getCourses({ signal: controller.signal }),
-        ]);
-
-        const teacher = teachers.find((candidate) => String(candidate.id) === user.id || candidate.email === user.email);
-        const ownedCourses = filterCoursesByTeacher(allCourses, user.id).map((course) => ({
-          id: String(course.id),
-          name: course.name,
-        }));
-
-        if (!controller.signal.aborted) {
-          setName(String(teacher?.name || teacher?.fullName || user.name));
-          setEmail(String(teacher?.email || user.email));
-          setCourses(ownedCourses);
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Unable to load your teacher profile.'));
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadProfile();
-
-    return () => controller.abort();
-  }, [user]);
+  const courses = profileData?.ownedCourses || [];
+  const error = fetchError instanceof Error ? fetchError.message : fetchError ? String(fetchError) : saveError;
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -68,7 +50,7 @@ const TeacherProfile: React.FC = () => {
     }
 
     setSaving(true);
-    setError(null);
+    setSaveError(null);
     setSuccess(null);
 
     try {
@@ -82,7 +64,7 @@ const TeacherProfile: React.FC = () => {
       setPassword('');
       setSuccess('Your teacher profile has been updated.');
     } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to update your teacher profile.'));
+      setSaveError(extractErrorMessage(err, 'Failed to update your teacher profile.'));
     } finally {
       setSaving(false);
     }
@@ -98,6 +80,12 @@ const TeacherProfile: React.FC = () => {
         <h1>My Profile</h1>
         <p>Manage your teacher account details and the courses linked to your profile.</p>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
         <div className="content-card">
