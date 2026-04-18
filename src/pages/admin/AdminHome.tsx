@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { courseApi, examApi, userApi, type Course, type Exam, type PlatformUser } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
-import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, getUserDisplayName, normalizeExamStatus, withPlatformUserRole } from '../../utils/queryme';
 
 interface AdminActivityRow {
@@ -59,61 +59,48 @@ const getCourseTeacherName = (course: Course | undefined, usersById: Map<string,
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
-  const [users, setUsers] = useState<PlatformUser[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingExams, setLoadingExams] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
+  const {
+    data: overviewData,
+    isLoading: loading,
+    error: loadError,
+  } = useQuery({
+    queryKey: ['admin-overview'],
+    queryFn: async ({ signal }) => {
+      const [admins, teachers, students, initialCourses] = await Promise.all([
+        userApi.getAdmins({ page: 1, pageSize: 5, signal }).catch(() => [] as PlatformUser[]),
+        userApi.getTeachers({ page: 1, pageSize: 5, signal }).catch(() => [] as PlatformUser[]),
+        userApi.getStudents({ page: 1, pageSize: 5, signal }).catch(() => [] as PlatformUser[]),
+        courseApi.getCourses({ page: 1, pageSize: 5, signal }).catch(() => [] as Course[]),
+      ]);
 
-  useEffect(() => {
-    const controller = new AbortController();
+      const usersCombined = [
+        ...withPlatformUserRole(admins, 'ADMIN'),
+        ...withPlatformUserRole(teachers, 'TEACHER'),
+        ...withPlatformUserRole(students, 'STUDENT'),
+      ];
 
-    const loadOverview = async () => {
-      setLoading(true);
-      setError(null);
+      const coursesToFetchExams = initialCourses.slice(0, 3);
+      const examLists = await Promise.all(
+        coursesToFetchExams.map((course) =>
+          examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[])
+        )
+      );
 
-      try {
-        const [admins, teachers, students, initialCourses] = await Promise.all([
-          userApi.getAdmins({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
-          userApi.getTeachers({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
-          userApi.getStudents({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
-          courseApi.getCourses({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as Course[]),
-        ]);
+      return {
+        users: usersCombined,
+        courses: initialCourses,
+        exams: examLists.flat(),
+      };
+    },
+    staleTime: 60_000,
+  });
 
-        if (!controller.signal.aborted) {
-          setUsers([
-            ...withPlatformUserRole(admins, 'ADMIN'),
-            ...withPlatformUserRole(teachers, 'TEACHER'),
-            ...withPlatformUserRole(students, 'STUDENT'),
-          ]);
-          setCourses(initialCourses);
-          setLoading(false); 
-        }
-
-        // Fetch exams for the first 3 courses in the background
-        setLoadingExams(initialCourses.length > 0);
-        const coursesToFetchExams = initialCourses.slice(0, 3);
-        const examLists = await Promise.all(
-          coursesToFetchExams.map((course) => examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[])),
-        );
-
-        if (!controller.signal.aborted) {
-          setExams(examLists.flat());
-          setLoadingExams(false);
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load the admin overview.'));
-          setLoading(false);
-          setLoadingExams(false);
-        }
-      }
-    };
-
-    void loadOverview();
-    return () => controller.abort();
-  }, []);
+  const error = loadError instanceof Error ? loadError.message : loadError ? String(loadError) : null;
+  const users = overviewData?.users || [];
+  const courses = overviewData?.courses || [];
+  const exams = overviewData?.exams || [];
+  const loadingExams = loading;
 
   const roleCounts = useMemo(() => ({
     students: users.filter((user) => getPlatformUserRole(user) === 'STUDENT').length,

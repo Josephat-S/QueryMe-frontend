@@ -1,17 +1,16 @@
-import React, { Suspense, lazy } from 'react';
+import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import DashboardLayout from '../../layout/DashboardLayout';
-import { PageSkeleton } from '../../components/PageSkeleton';
 import type { NavItem } from '../../layout/DashboardLayout';
 
-const TeacherHome = lazy(() => import('./TeacherHome'));
-const ExamBuilder = lazy(() => import('./ExamBuilder'));
-const ResultsDashboard = lazy(() => import('./ResultsDashboard'));
-const ExamsList = lazy(() => import('./ExamsList'));
-const TeacherProfile = lazy(() => import('./TeacherProfile'));
-const ExamSessionsMonitor = lazy(() => import('./ExamSessionsMonitor'));
-const CourseEnrollments = lazy(() => import('./CourseEnrollments'));
-const TeacherCourses = lazy(() => import('./TeacherCourses'));
+import TeacherHome from './TeacherHome';
+import ExamBuilder from './ExamBuilder';
+import ResultsDashboard from './ResultsDashboard';
+import ExamsList from './ExamsList';
+import TeacherProfile from './TeacherProfile';
+import ExamSessionsMonitor from './ExamSessionsMonitor';
+import CourseEnrollments from './CourseEnrollments';
+import TeacherCourses from './TeacherCourses';
 
 const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -57,7 +56,6 @@ const teacherNav: NavItem[] = [
 
 const TeacherDashboard: React.FC = () => (
   <DashboardLayout navItems={teacherNav} portalTitle="Teacher Portal" accentColor="#38a169">
-    <Suspense fallback={<PageSkeleton title="Teacher Portal" />}>
       <Routes>
         <Route index element={<TeacherHome />} />
         <Route path="courses" element={<TeacherCourses />} />
@@ -69,7 +67,6 @@ const TeacherDashboard: React.FC = () => (
         <Route path="profile" element={<TeacherProfile />} />
         <Route path="students" element={<CourseEnrollments />} />
       </Routes>
-    </Suspense>
   </DashboardLayout>
 );
 
