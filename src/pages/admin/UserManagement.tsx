@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastContext';
@@ -6,19 +6,17 @@ import { extractErrorMessage } from '../../utils/errorUtils';
 import { getPlatformUserRole, withPlatformUserRole } from '../../utils/queryme';
 import type { PlatformUser } from '../../types/queryme';
 
-const MANAGED_ROLES = ['TEACHER', 'STUDENT', 'GUEST'] as const;
+const MANAGED_ROLES = ['TEACHER', 'STUDENT'] as const;
 type ManagedUserRole = typeof MANAGED_ROLES[number];
 
 const ROLE_LABELS: Record<ManagedUserRole, string> = {
   TEACHER: 'Teacher',
   STUDENT: 'Student',
-  GUEST: 'Guest',
 };
 
 const ROLE_DESCRIPTIONS: Record<ManagedUserRole, string> = {
   TEACHER: 'Can build exams, manage courses, and monitor sessions.',
   STUDENT: 'Can take assigned exams and view personal results.',
-  GUEST: 'Can explore public catalog and limited platform features.',
 };
 
 interface ManagedUser {
@@ -29,10 +27,13 @@ interface ManagedUser {
 }
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
+const SEARCH_FETCH_PAGE_SIZE = 100;
 
 const UserManagement: React.FC = () => {
   const { showToast } = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [selectedRoles, setSelectedRoles] = useState<ManagedUserRole[]>([...MANAGED_ROLES]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
@@ -48,33 +49,88 @@ const UserManagement: React.FC = () => {
   const [formRole, setFormRole] = useState<ManagedUserRole>('STUDENT');
   const modalRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const normalizedSearch = searchQuery.trim().toLowerCase();
 
-  const loadUsers = async (signal?: AbortSignal) => {
-    // We should ideally fetch based on current page and pageSize
-    // but the current UI logic aggregates them.
-    // For now, let's at least keep it as is but it will use the new API signature.
-    // Limited to first 100 users per role to avoid heavy load.
-    const [teachers, students, guests] = await Promise.all([
-      userApi.getTeachers({ page: 1, pageSize: 100, signal }).catch(() => [] as PlatformUser[]),
-      userApi.getStudents({ page: 1, pageSize: 100, signal }).catch(() => [] as PlatformUser[]),
-      userApi.getGuests({ page: 1, pageSize: 100, signal }).catch(() => [] as PlatformUser[]),
-    ]);
+  const loadUsers = useCallback(async (signal?: AbortSignal) => {
+    if (selectedRoles.length === 0) {
+      setUsers([]);
+      setTotalItems(0);
+      setTotalPages(1);
+      return;
+    }
+
+    const toManagedUser = (user: Partial<PlatformUser> & { email: string }): ManagedUser => ({
+      id: String(user.id),
+      name: String(user.name || user.fullName || user.email.split('@')[0]),
+      email: user.email,
+      role: getPlatformUserRole(user) as ManagedUserRole,
+    });
+
+    const fetchAllRoleUsers = async (role: ManagedUserRole) => {
+      const fetchPage = role === 'TEACHER' ? userApi.getTeachersPage : userApi.getStudentsPage;
+      const withRole = role === 'TEACHER' ? withPlatformUserRole : withPlatformUserRole;
+
+      const firstPage = await fetchPage({ page: 1, pageSize: SEARCH_FETCH_PAGE_SIZE, signal });
+      const allItems = [...withRole(firstPage.content, role)];
+
+      for (let page = 2; page <= Math.max(1, firstPage.totalPages); page += 1) {
+        const nextPage = await fetchPage({ page, pageSize: SEARCH_FETCH_PAGE_SIZE, signal });
+        allItems.push(...withRole(nextPage.content, role));
+      }
+
+      return allItems;
+    };
+
+    if (normalizedSearch) {
+      const roleUsers = await Promise.all(selectedRoles.map((role) => fetchAllRoleUsers(role)));
+      const merged = roleUsers
+        .flat()
+        .filter((user) => getPlatformUserRole(user) !== 'ADMIN')
+        .map(toManagedUser)
+        .filter((user) => `${user.name} ${user.email}`.toLowerCase().includes(normalizedSearch));
+
+      const computedTotalPages = Math.max(1, Math.ceil(merged.length / pageSize));
+      const safePage = Math.min(currentPage, computedTotalPages);
+      const startIndex = (safePage - 1) * pageSize;
+
+      setTotalItems(merged.length);
+      setTotalPages(computedTotalPages);
+      setUsers(merged.slice(startIndex, startIndex + pageSize));
+      return;
+    }
+
+    const sizePerRole = Math.max(1, Math.ceil(pageSize / selectedRoles.length));
+
+    const rolePages = await Promise.all(
+      selectedRoles.map((role) => {
+        if (role === 'TEACHER') {
+          return userApi.getTeachersPage({ page: currentPage, pageSize: sizePerRole, signal });
+        }
+
+        return userApi.getStudentsPage({ page: currentPage, pageSize: sizePerRole, signal });
+      }),
+    );
+
+    const teachersPage = selectedRoles.includes('TEACHER')
+      ? rolePages[selectedRoles.indexOf('TEACHER')]
+      : null;
+    const studentsPage = selectedRoles.includes('STUDENT')
+      ? rolePages[selectedRoles.indexOf('STUDENT')]
+      : null;
+
+    const teachers = teachersPage ? withPlatformUserRole(teachersPage.content, 'TEACHER') : [];
+    const students = studentsPage ? withPlatformUserRole(studentsPage.content, 'STUDENT') : [];
+
+    const combinedTotal = (teachersPage?.totalElements || 0) + (studentsPage?.totalElements || 0);
+    setTotalItems(combinedTotal);
+    setTotalPages(Math.max(1, Math.ceil(combinedTotal / pageSize)));
 
     setUsers(
-      [
-        ...withPlatformUserRole(teachers, 'TEACHER'),
-        ...withPlatformUserRole(students, 'STUDENT'),
-        ...withPlatformUserRole(guests, 'GUEST'),
-      ]
+      [...teachers, ...students]
         .filter((user) => getPlatformUserRole(user) !== 'ADMIN')
-        .map((user) => ({
-          id: String(user.id),
-          name: String(user.name || user.fullName || user.email.split('@')[0]),
-          email: user.email,
-          role: getPlatformUserRole(user) as ManagedUserRole,
-        })),
+        .map(toManagedUser),
     );
-  };
+  }, [currentPage, normalizedSearch, pageSize, selectedRoles]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,23 +148,9 @@ const UserManagement: React.FC = () => {
       });
 
     return () => controller.abort();
-  }, []);
+  }, [loadUsers]);
 
-  const filteredUsers = useMemo(
-    () => users.filter((user) => {
-      const matchesFilter = selectedRoles.includes(user.role);
-      const matchesSearch = `${user.name} ${user.email}`.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesFilter && matchesSearch;
-    }),
-    [searchQuery, selectedRoles, users],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const paginatedUsers = useMemo(
-    () => filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [filteredUsers, pageSize, safePage],
-  );
 
   const toggleRole = (role: ManagedUserRole) => {
     setSelectedRoles((currentRoles) => (
@@ -326,7 +368,7 @@ const UserManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {paginatedUsers.map((user) => (
+              {users.map((user) => (
                 <tr key={`${user.role}-${user.id}`}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{user.name}</div>
@@ -340,7 +382,7 @@ const UserManagement: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {paginatedUsers.length === 0 && (
+              {users.length === 0 && (
                 <tr>
                   <td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: '#666' }}>
                     No users match the active filter.
@@ -351,7 +393,7 @@ const UserManagement: React.FC = () => {
           </table>
         </div>
         <div className="space-y-3 p-4 md:hidden">
-          {paginatedUsers.map((user) => (
+          {users.map((user) => (
             <div key={`card-${user.role}-${user.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="font-semibold text-slate-800">{user.name}</div>
               <div className="mt-1 text-xs text-slate-500">{user.email}</div>
@@ -363,7 +405,7 @@ const UserManagement: React.FC = () => {
               </div>
             </div>
           ))}
-          {paginatedUsers.length === 0 && (
+          {users.length === 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
               No users match the active filter.
             </div>
@@ -371,8 +413,8 @@ const UserManagement: React.FC = () => {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            Showing {filteredUsers.length === 0 ? 0 : (safePage - 1) * pageSize + 1}-
-            {Math.min(safePage * pageSize, filteredUsers.length)} of {filteredUsers.length}
+            Showing {totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1}-
+            {Math.min((safePage - 1) * pageSize + users.length, totalItems)} of {totalItems}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
@@ -414,7 +456,7 @@ const UserManagement: React.FC = () => {
               <p>
                 {editingUser
                   ? 'Update account details. Leave password empty to keep current access.'
-                  : 'Create a new platform account for teacher, student, or guest access.'}
+                  : 'Create a new platform account for teacher or student access.'}
               </p>
             </div>
 
@@ -503,10 +545,6 @@ const createNewUser = async (role: ManagedUserRole, payload: { fullName: string;
     await userApi.registerTeacher(payload);
     return;
   }
-  if (role === 'GUEST') {
-    await userApi.registerGuest(payload);
-    return;
-  }
   await userApi.registerStudent(payload);
 };
 
@@ -517,10 +555,6 @@ const updateExistingUser = async (
 ) => {
   if (role === 'TEACHER') {
     await userApi.updateTeacher(id, payload);
-    return;
-  }
-  if (role === 'GUEST') {
-    await userApi.updateGuest(id, payload);
     return;
   }
   await userApi.updateStudent(id, payload);

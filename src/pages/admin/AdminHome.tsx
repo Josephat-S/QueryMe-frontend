@@ -74,12 +74,11 @@ const AdminHome: React.FC = () => {
       setError(null);
 
       try {
-        const [admins, teachers, students, guests, initialCourses] = await Promise.all([
+        const [admins, teachers, students, initialCourses] = await Promise.all([
           userApi.getAdmins({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
           userApi.getTeachers({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
           userApi.getStudents({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
-          userApi.getGuests({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as PlatformUser[]),
-          courseApi.getCourses({ page: 1, pageSize: 5, signal: controller.signal }),
+          courseApi.getCourses({ page: 1, pageSize: 5, signal: controller.signal }).catch(() => [] as Course[]),
         ]);
 
         if (!controller.signal.aborted) {
@@ -87,13 +86,12 @@ const AdminHome: React.FC = () => {
             ...withPlatformUserRole(admins, 'ADMIN'),
             ...withPlatformUserRole(teachers, 'TEACHER'),
             ...withPlatformUserRole(students, 'STUDENT'),
-            ...withPlatformUserRole(guests, 'GUEST'),
           ]);
           setCourses(initialCourses);
-          setLoading(false); // Show overview content immediately
+          setLoading(false); 
         }
 
-        // Now fetch exams for the first 3 courses in the background
+        // Fetch exams for the first 3 courses in the background
         setLoadingExams(initialCourses.length > 0);
         const coursesToFetchExams = initialCourses.slice(0, 3);
         const examLists = await Promise.all(
@@ -121,8 +119,7 @@ const AdminHome: React.FC = () => {
     students: users.filter((user) => getPlatformUserRole(user) === 'STUDENT').length,
     teachers: users.filter((user) => getPlatformUserRole(user) === 'TEACHER').length,
     admins: users.filter((user) => getPlatformUserRole(user) === 'ADMIN').length,
-    guests: users.filter((user) => getPlatformUserRole(user) === 'GUEST').length,
-  }), [users]);
+}), [users]);
 
   const recentActivities = useMemo<AdminActivityRow[]>(() => {
     const items: AdminActivityRow[] = [];
@@ -202,16 +199,14 @@ const AdminHome: React.FC = () => {
                 <tr><td>Students</td><td>{roleCounts.students}</td></tr>
                 <tr><td>Teachers</td><td>{roleCounts.teachers}</td></tr>
                 <tr><td>Admins</td><td>{roleCounts.admins}</td></tr>
-                <tr><td>Guests</td><td>{roleCounts.guests}</td></tr>
-              </tbody>
+                              </tbody>
             </table>
           </div>
           <div className="space-y-3 p-4 md:hidden">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Students</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.students}</div></div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Teachers</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.teachers}</div></div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admins</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.admins}</div></div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guests</div><div className="mt-1 text-2xl font-bold text-slate-900">{roleCounts.guests}</div></div>
-          </div>
+                      </div>
         </div>
 
         <div className="content-card">
