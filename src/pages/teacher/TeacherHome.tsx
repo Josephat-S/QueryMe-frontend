@@ -43,7 +43,11 @@ const TeacherHome: React.FC = () => {
       setError(null);
 
       try {
-        const courses = await courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal });
+        // Fetch courses and submissions in parallel
+        const [courses, submissions] = await Promise.all([
+          courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal }),
+          resultApi.getResultsByTeacher(user.id, { page: 1, pageSize: 20, signal: controller.signal }).catch(() => [] as TeacherResultRow[]),
+        ]);
         const teacherCourses = filterCoursesByTeacher(courses, user.id);
         const nextCourseNamesById = teacherCourses.reduce<Record<string, string>>((acc, course) => {
           const id = String(course.id || '');
@@ -55,8 +59,8 @@ const TeacherHome: React.FC = () => {
 
           return acc;
         }, {});
-        
-        // Only fetch exams for the first 3 teacher courses for dashboard overview
+
+        // Fetch exams for first 3 courses in parallel with already-fetched submissions
         const coursesToFetch = teacherCourses.slice(0, 3);
         const examLists = await Promise.all(
           coursesToFetch.map((course) => examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[])),
@@ -70,20 +74,20 @@ const TeacherHome: React.FC = () => {
         const publishedExams = exams.filter((exam) => normalizeExamStatus(exam.status) === 'PUBLISHED');
 
         if (!controller.signal.aborted) {
-          setStats((prev) => ({
-            ...prev,
+          setStats({
             exams: exams.length,
             published: publishedExams.length,
             drafts: exams.length - publishedExams.length,
-          }));
+            submissions: submissions.length,
+          });
           setCourseExams(exams);
           setCourseNamesById(nextCourseNamesById);
-          setLoading(false); // Show stats and exams immediately
+          setSubmissionRows(submissions);
+          setLoading(false);
+          setLoadingSubmissions(false);
         }
 
-        // Now fetch submissions in the background
-        setLoadingSubmissions(true);
-        const submissions = await resultApi.getResultsByTeacher(user.id, { page: 1, pageSize: 20, signal: controller.signal });
+        setLoadingSubmissions(false);
 
         if (!controller.signal.aborted) {
           setStats((prev) => ({
@@ -91,7 +95,6 @@ const TeacherHome: React.FC = () => {
             submissions: submissions.length,
           }));
           setSubmissionRows(submissions);
-          setLoadingSubmissions(false);
         }
       } catch (err) {
         if (!controller.signal.aborted) {

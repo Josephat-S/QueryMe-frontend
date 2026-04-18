@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
@@ -29,12 +28,10 @@ const GuestProfile: React.FC = () => {
       setError(null);
 
       try {
-        const guests = await userApi.getGuests({ signal: controller.signal });
-        const guest = guests.find((candidate) => String(candidate.id) === user.id || candidate.email === user.email);
-
+        // Use auth context data directly - no separate guest API call needed
         if (!controller.signal.aborted) {
-          setName(String(guest?.name || guest?.fullName || user.name));
-          setEmail(String(guest?.email || user.email));
+          setName(String(user.name || ''));
+          setEmail(String(user.email || ''));
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -63,11 +60,7 @@ const GuestProfile: React.FC = () => {
     setSuccess(null);
 
     try {
-      await userApi.updateGuest(user.id, {
-        fullName: name,
-        email,
-        ...(password ? { password } : {}),
-      });
+      // Guest profile update is local only
 
       updateCurrentUser({ ...user, name, email });
       setPassword('');

@@ -1,5 +1,5 @@
 import axiosInstance from './axiosInstance';
-import { unwrapResponse } from './helpers';
+import { toBackendPaginationParams, unwrapListResponse, unwrapResponse } from './helpers';
 import type {
   ClassGroup,
   Course,
@@ -27,11 +27,11 @@ const toEnrollmentRequest = (payload: CourseEnrollmentPayload) => ({
 
 export const courseApi = {
   async getCourses(params?: PaginationParams): Promise<Course[]> {
-    const response = await axiosInstance.get<Course[]>('/courses', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get('/courses', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<Course>(response);
   },
 
   async createCourse(payload: CreateCoursePayload, signal?: AbortSignal): Promise<Course> {
@@ -40,19 +40,19 @@ export const courseApi = {
   },
 
   async getClassGroups(params?: PaginationParams): Promise<ClassGroup[]> {
-    const response = await axiosInstance.get<ClassGroup[]>('/class-groups', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get('/class-groups', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<ClassGroup>(response);
   },
 
   async getClassGroupsByCourse(courseId: string, params?: PaginationParams): Promise<ClassGroup[]> {
-    const response = await axiosInstance.get<ClassGroup[]>(`/class-groups/course/${courseId}`, { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get(`/class-groups/course/${courseId}`, {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<ClassGroup>(response);
   },
 
   async createClassGroup(payload: CreateClassGroupPayload, signal?: AbortSignal): Promise<ClassGroup> {
@@ -61,27 +61,27 @@ export const courseApi = {
   },
 
   async getEnrollments(params?: PaginationParams): Promise<CourseEnrollment[]> {
-    const response = await axiosInstance.get<CourseEnrollment[]>('/course-enrollments', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get('/course-enrollments', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<CourseEnrollment>(response);
   },
 
   async getEnrollmentsByCourse(courseId: string, params?: PaginationParams): Promise<CourseEnrollment[]> {
-    const response = await axiosInstance.get<CourseEnrollment[]>(`/course-enrollments/course/${courseId}`, { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get(`/course-enrollments/course/${courseId}`, {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<CourseEnrollment>(response);
   },
 
   async getEnrollmentsByStudent(studentId: string, params?: PaginationParams): Promise<CourseEnrollment[]> {
-    const response = await axiosInstance.get<CourseEnrollment[]>(`/course-enrollments/student/${studentId}`, { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get(`/course-enrollments/student/${studentId}`, {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<CourseEnrollment>(response);
   },
 
   async createEnrollment(payload: CourseEnrollmentPayload, signal?: AbortSignal): Promise<CourseEnrollment> {
