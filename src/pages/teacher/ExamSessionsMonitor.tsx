@@ -1,5 +1,6 @@
 /* eslint-disable react-x/set-state-in-effect */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { courseApi, examApi, sessionApi, userApi, type CourseEnrollment, type Exam, type PlatformUser, type Session } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
@@ -389,6 +390,14 @@ const ExamSessionsMonitor: React.FC = () => {
     [filteredRows],
   );
 
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredRows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 56, // estimated row height
+    overscan: 10,
+  });
+
   const forceSubmit = async (sessionId: string) => {
     setError(null);
 
@@ -509,23 +518,39 @@ const ExamSessionsMonitor: React.FC = () => {
             </div>
           ) : (
             <>
-              <div className="hidden overflow-x-auto md:block">
-                <table className="sess-table min-w-245">
+              <div 
+                className="hidden overflow-x-auto md:block"
+                ref={parentRef}
+                style={{ height: '600px', overflow: 'auto' }}
+              >
+                <table className="sess-table min-w-245 w-full table-fixed">
                 <thead>
                   <tr>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Student</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Status</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Started</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Submitted</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Time Remaining</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Workspace</th>
-                    {hasActionableRows && <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f8fafc' }}>Actions</th>}
+                    <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '25%' }}>Student</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Status</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Started</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Submitted</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Time Remaining</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Workspace</th>
+                    {hasActionableRows && <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '10%' }}>Actions</th>}
                   </tr>
                 </thead>
-                <tbody>
-                  {filteredRows.map((row) => (
-                    <tr key={row.id}>
-                      <td>
+                <tbody style={{ display: 'block', height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const row = filteredRows[virtualRow.index];
+                    return (
+                    <tr 
+                      key={row.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                        display: 'flex',
+                      }}
+                    >
+                      <td style={{ width: '25%', display: 'flex', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ width: '28px', height: '28px', borderRadius: '999px', background: '#dcfce7', color: '#166534', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>
                             {row.studentName[0] || '?'}
@@ -536,14 +561,14 @@ const ExamSessionsMonitor: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td>
+                      <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>
                         <span className={`sess-status-chip ${row.status === 'in_progress' ? 'sess-status-active' : row.status === 'submitted' ? 'sess-status-submitted' : 'sess-status-expired'}`}>
                           {row.status.replace('_', ' ')}
                         </span>
                       </td>
-                      <td>{row.startedAt ? new Date(row.startedAt).toLocaleString() : 'N/A'}</td>
-                      <td>{row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</td>
-                      <td>
+                      <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>{row.startedAt ? new Date(row.startedAt).toLocaleString() : 'N/A'}</td>
+                      <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>{row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</td>
+                      <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>
                         {row.status === 'in_progress' && row.expiresAt
                           ? (
                             <span style={{ fontWeight: 600, color: '#0369a1' }}>
@@ -554,13 +579,13 @@ const ExamSessionsMonitor: React.FC = () => {
                             ? 'Expired'
                             : '—'}
                       </td>
-                      <td>
+                      <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>
                         <span className="badge badge-gray">
                           {row.hasWorkspace ? 'Provisioned' : 'Pending'}
                         </span>
                       </td>
                       {hasActionableRows && (
-                        <td>
+                        <td style={{ width: '10%', display: 'flex', alignItems: 'center' }}>
                           {row.status === 'in_progress' && (
                             <button className="sess-force-btn" onClick={() => void forceSubmit(row.id)}>
                               Force Submit
@@ -569,7 +594,8 @@ const ExamSessionsMonitor: React.FC = () => {
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 </table>
               </div>

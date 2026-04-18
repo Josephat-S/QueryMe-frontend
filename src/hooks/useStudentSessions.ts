@@ -1,21 +1,27 @@
-import { useCallback } from 'react';
-import { sessionApi, type Session } from '../api';
-import { useAsyncData } from './useAsyncData';
+import { useQuery } from '@tanstack/react-query';
+import { sessionApi } from '../api';
 
 export const useStudentSessions = (studentId?: string) => {
-  const loader = useCallback(
-    (signal: AbortSignal): Promise<Session[]> => {
-      if (!studentId) {
-        return Promise.resolve([]);
-      }
-
+  const {
+    data = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['student-sessions', studentId],
+    queryFn: async ({ signal }) => {
+      if (!studentId) return [];
       return sessionApi.getSessionsByStudent(studentId, { signal });
     },
-    [studentId],
-  );
-
-  return useAsyncData(loader, [loader], 'Failed to load exam sessions.', {
-    cacheKey: `student-sessions:${studentId || 'anonymous'}`,
-    cacheTtlMs: 30_000,
+    enabled: !!studentId,
+    staleTime: 30_000,
   });
+
+  return {
+    data,
+    loading,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refresh: refetch,
+    setData: () => {},
+  };
 };

@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { courseApi, examApi, sandboxApi, userApi, type Exam, type PlatformUser } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastContext';
-import { useAsyncData } from '../../hooks/useAsyncData';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getUserDisplayName, normalizeExamStatus } from '../../utils/queryme';
 
@@ -107,10 +107,13 @@ const SystemSettings: React.FC = () => {
 
   const {
     data: controls,
-    loading,
+    isLoading: loading,
     error: loadError,
-    refresh: refreshControls,
-  } = useAsyncData<SystemControlsData>(loadControls, [], 'Unable to load system controls right now.');
+    refetch: refreshControls,
+  } = useQuery({
+    queryKey: ['system-controls'],
+    queryFn: async ({ signal }) => loadControls(signal),
+  });
 
   const exams = controls?.exams ?? EMPTY_EXAMS;
   const coursesById = controls?.coursesById ?? EMPTY_COURSES_BY_ID;
@@ -241,7 +244,7 @@ const SystemSettings: React.FC = () => {
       {loadError && (
         <div className="ss-inline-alert ss-inline-alert-page" role="alert" aria-live="assertive">
           <strong>Unable to load controls.</strong>
-          <span>{loadError}</span>
+          <span>{loadError instanceof Error ? loadError.message : String(loadError)}</span>
         </div>
       )}
 

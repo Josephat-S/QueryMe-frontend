@@ -1,21 +1,27 @@
-import { useCallback } from 'react';
-import { questionApi, type Question } from '../api';
-import { useAsyncData } from './useAsyncData';
+import { useQuery } from '@tanstack/react-query';
+import { questionApi } from '../api';
 
 export const useQuestions = (examId?: string) => {
-  const loader = useCallback(
-    (signal: AbortSignal): Promise<Question[]> => {
-      if (!examId) {
-        return Promise.resolve([]);
-      }
-
+  const {
+    data = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['questions', examId],
+    queryFn: async ({ signal }) => {
+      if (!examId) return [];
       return questionApi.getQuestions(examId, signal);
     },
-    [examId],
-  );
-
-  return useAsyncData(loader, [loader], 'Failed to load questions.', {
-    cacheKey: `questions:${examId || 'none'}`,
-    cacheTtlMs: 30_000,
+    enabled: !!examId,
+    staleTime: 30_000,
   });
+
+  return {
+    data,
+    loading,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refresh: refetch,
+    setData: () => {},
+  };
 };
