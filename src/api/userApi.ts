@@ -1,27 +1,28 @@
 import axiosInstance from './axiosInstance';
-import { toBackendUserPayload, unwrapResponse } from './helpers';
+import {
+  toBackendPaginationParams,
+  toBackendUserPayload,
+  unwrapPaginatedResponse,
+  unwrapResponse,
+  type PaginatedResponse,
+  type PaginationParams,
+} from './helpers';
 import type { PlatformUser, UserRegistrationPayload, UserUpdatePayload } from '../types/queryme';
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-export interface PaginationParams {
-  page?: number;
-  pageSize?: number;
-  signal?: AbortSignal;
-}
+export type { PaginatedResponse, PaginationParams };
 
 export const userApi = {
-  async getAdmins(params?: PaginationParams): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/admins', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+  async getAdminsPage(params?: PaginationParams): Promise<PaginatedResponse<PlatformUser>> {
+    const response = await axiosInstance.get('/admins', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapPaginatedResponse<PlatformUser>(response);
+  },
+
+  async getAdmins(params?: PaginationParams): Promise<PlatformUser[]> {
+    const page = await this.getAdminsPage(params);
+    return page.content;
   },
 
   async registerAdmin(payload: UserRegistrationPayload, signal?: AbortSignal): Promise<PlatformUser> {
@@ -34,12 +35,17 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
-  async getTeachers(params?: PaginationParams): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/teachers', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+  async getTeachersPage(params?: PaginationParams): Promise<PaginatedResponse<PlatformUser>> {
+    const response = await axiosInstance.get('/teachers', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapPaginatedResponse<PlatformUser>(response);
+  },
+
+  async getTeachers(params?: PaginationParams): Promise<PlatformUser[]> {
+    const page = await this.getTeachersPage(params);
+    return page.content;
   },
 
   async registerTeacher(payload: UserRegistrationPayload, signal?: AbortSignal): Promise<PlatformUser> {
@@ -52,12 +58,17 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
-  async getStudents(params?: PaginationParams): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/students', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+  async getStudentsPage(params?: PaginationParams): Promise<PaginatedResponse<PlatformUser>> {
+    const response = await axiosInstance.get('/students', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapPaginatedResponse<PlatformUser>(response);
+  },
+
+  async getStudents(params?: PaginationParams): Promise<PlatformUser[]> {
+    const page = await this.getStudentsPage(params);
+    return page.content;
   },
 
   async getStudent(id: string, signal?: AbortSignal): Promise<PlatformUser> {
@@ -80,21 +91,4 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
-  async getGuests(params?: PaginationParams): Promise<PlatformUser[]> {
-    const response = await axiosInstance.get<PlatformUser[]>('/guests', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
-    });
-    return unwrapResponse(response);
-  },
-
-  async registerGuest(payload: UserRegistrationPayload, signal?: AbortSignal): Promise<PlatformUser> {
-    const response = await axiosInstance.post<PlatformUser>('/guests/register', toBackendUserPayload(payload), { signal });
-    return unwrapResponse(response);
-  },
-
-  async updateGuest(id: string, payload: UserUpdatePayload, signal?: AbortSignal): Promise<PlatformUser> {
-    const response = await axiosInstance.put<PlatformUser>(`/guests/${id}`, toBackendUserPayload(payload), { signal });
-    return unwrapResponse(response);
-  },
 };

@@ -1,5 +1,5 @@
 import axiosInstance from './axiosInstance';
-import { unwrapResponse } from './helpers';
+import { toBackendPaginationParams, unwrapListResponse, unwrapResponse } from './helpers';
 import type { CreateExamPayload, Exam, UpdateExamPayload } from '../types/queryme';
 import type { PaginationParams } from './userApi';
 
@@ -12,19 +12,19 @@ export const examApi = {
   },
 
   async getExamsByCourse(courseId: string, params?: PaginationParams): Promise<Exam[]> {
-    const response = await axiosInstance.get<Exam[]>(`/exams/course/${courseId}`, { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get(`/exams/course/${courseId}`, {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<Exam>(response);
   },
 
   async getPublishedExams(params?: PaginationParams): Promise<Exam[]> {
-    const response = await axiosInstance.get<Exam[]>('/exams/published', { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+    const response = await axiosInstance.get('/exams/published', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapListResponse<Exam>(response);
   },
 
   async createExam(payload: CreateExamPayload, signal?: AbortSignal): Promise<Exam> {

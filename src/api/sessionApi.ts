@@ -1,7 +1,7 @@
 import axiosInstance from './axiosInstance';
-import { unwrapResponse } from './helpers';
+import { toBackendPaginationParams, unwrapPaginatedResponse, unwrapResponse } from './helpers';
 import type { Session, StartSessionPayload } from '../types/queryme';
-import type { PaginationParams } from './userApi';
+import type { PaginatedResponse, PaginationParams } from './userApi';
 
 export const sessionApi = {
   async startSession(payload: StartSessionPayload, signal?: AbortSignal): Promise<Session> {
@@ -19,19 +19,29 @@ export const sessionApi = {
     return unwrapResponse(response);
   },
 
-  async getSessionsByStudent(studentId: string, params?: PaginationParams): Promise<Session[]> {
-    const response = await axiosInstance.get<Session[]>(`/sessions/student/${studentId}`, { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
+  async getSessionsByStudentPage(studentId: string, params?: PaginationParams): Promise<PaginatedResponse<Session>> {
+    const response = await axiosInstance.get(`/sessions/student/${studentId}`, {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
     });
-    return unwrapResponse(response);
+    return unwrapPaginatedResponse<Session>(response);
+  },
+
+  async getSessionsByStudent(studentId: string, params?: PaginationParams): Promise<Session[]> {
+    const page = await this.getSessionsByStudentPage(studentId, params);
+    return page.content;
+  },
+
+  async getSessionsByExamPage(examId: string, params?: PaginationParams): Promise<PaginatedResponse<Session>> {
+    const response = await axiosInstance.get(`/sessions/exam/${examId}`, {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
+    });
+    return unwrapPaginatedResponse<Session>(response);
   },
 
   async getSessionsByExam(examId: string, params?: PaginationParams): Promise<Session[]> {
-    const response = await axiosInstance.get<Session[]>(`/sessions/exam/${examId}`, { 
-      params: { page: params?.page, pageSize: params?.pageSize },
-      signal: params?.signal 
-    });
-    return unwrapResponse(response);
+    const page = await this.getSessionsByExamPage(examId, params);
+    return page.content;
   },
 };

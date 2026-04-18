@@ -1,13 +1,21 @@
 import axiosInstance from './axiosInstance';
-import { unwrapResponse } from './helpers';
+import { toBackendPaginationParams, unwrapListResponse, unwrapResponse, type PaginationParams } from './helpers';
 import type { Question, QuestionPayload } from '../types/queryme';
 
 const QUESTION_MUTATION_TIMEOUT_MS = 120000;
 
 export const questionApi = {
-  async getQuestions(examId: string, signal?: AbortSignal): Promise<Question[]> {
-    const response = await axiosInstance.get<Question[]>(`/exams/${examId}/questions`, { signal });
-    return unwrapResponse(response);
+  async getQuestions(examId: string, paramsOrSignal?: PaginationParams | AbortSignal): Promise<Question[]> {
+    const signal = paramsOrSignal instanceof AbortSignal ? paramsOrSignal : paramsOrSignal?.signal;
+    const params = paramsOrSignal instanceof AbortSignal
+      ? ({ page: 1, size: 500 } as const)
+      : (paramsOrSignal ?? { page: 1, size: 500 });
+
+    const response = await axiosInstance.get(`/exams/${examId}/questions`, {
+      params: toBackendPaginationParams(params),
+      signal,
+    });
+    return unwrapListResponse<Question>(response);
   },
 
   async createQuestion(examId: string, payload: QuestionPayload, signal?: AbortSignal): Promise<Question> {

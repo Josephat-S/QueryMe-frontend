@@ -735,9 +735,6 @@ const CourseEnrollments: React.FC = () => {
         <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="m-0 text-3xl font-semibold tracking-tight text-slate-900">Students</h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600">
-              Register student accounts, bulk-import rosters, and attach them directly to your courses using the documented backend endpoints.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">
