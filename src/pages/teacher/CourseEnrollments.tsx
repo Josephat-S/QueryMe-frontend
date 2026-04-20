@@ -1,12 +1,13 @@
 /* eslint-disable react-x/set-state-in-effect */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { courseApi, userApi, type ClassGroup, type Course, type CourseEnrollment, type PlatformUser } from '../../api';
+import { useQueryClient } from '@tanstack/react-query';
+import { courseApi, userApi, type Course, type CourseEnrollment, type PlatformUser } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth, useTheme } from '../../contexts';
 import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, getUserDisplayName } from '../../utils/queryme';
+import { getUserDisplayName } from '../../utils/queryme';
 import {
   buildStudentRegistrationPayload,
   parseStudentImportFile,
@@ -14,6 +15,11 @@ import {
   STUDENT_IMPORT_TEMPLATE,
   type StudentImportRow,
 } from '../../utils/studentImport';
+import { useTeacherCourses } from '../../hooks/useTeacherCourses';
+import { useStudents } from '../../hooks/useStudents';
+import { useEnrollments } from '../../hooks/useEnrollments';
+import { useEnrollmentsByCourse } from '../../hooks/useEnrollmentsByCourse';
+import { useClassGroupsByCourse } from '../../hooks/useClassGroupsByCourse';
 
 type MembershipSource = 'ENROLLMENT' | 'DIRECT' | 'BOTH';
 const ROWS_PER_PAGE = 10;
@@ -231,14 +237,16 @@ const CourseEnrollments: React.FC = () => {
   const { isDarkMode } = useTheme();
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [students, setStudents] = useState<PlatformUser[]>([]);
-  const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
-  const [allEnrollments, setAllEnrollments] = useState<CourseEnrollment[]>([]);
+
+  // ── Cached data via hooks ────────────────────────────────────────────────
+  const { data: courses } = useTeacherCourses(user?.id);
+  const { data: students, loading: studentsLoading } = useStudents();
+  const { data: allEnrollments } = useEnrollments();
+
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
-  const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
   const [singleForm, setSingleForm] = useState<SingleStudentFormState>({
     fullName: '',
     email: '',
@@ -263,121 +271,40 @@ const CourseEnrollments: React.FC = () => {
   const [tablePage, setTablePage] = useState(1);
   const requestedCourseId = searchParams.get('courseId') || '';
 
-  const loadBaseData = useCallback(async (signal?: AbortSignal) => {
-    if (!user) {
-      setCourses([]);
-      setStudents([]);
-      setClassGroups([]);
-      setAllEnrollments([]);
-      setEnrollments([]);
-      setSelectedCourseId('');
-      return;
-    }
+  // Per-course data (changes when selected course changes)
+  const { loading: enrollmentsLoading } = useEnrollmentsByCourse(selectedCourseId || undefined);
+  const { data: classGroups } = useClassGroupsByCourse(selectedCourseId || undefined);
 
-    const [allCourses, allStudents, enrollmentRows] = await Promise.all([
-      courseApi.getCourses({ page: 1, pageSize: 100, signal }),
-      userApi.getStudents({ page: 1, pageSize: 100, signal }),
-      courseApi.getEnrollments({ page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]),
-    ]);
-
-    const teacherCourses = filterCoursesByTeacher(allCourses, user.id);
-    const teacherCourseIds = new Set(teacherCourses.map((course) => String(course.id)));
-
-    setCourses(teacherCourses);
-    setStudents(allStudents);
-    setAllEnrollments(enrollmentRows.filter((row) => teacherCourseIds.has(getEnrollmentCourseId(row))));
+  // Initialise selected course once courses arrive
+  useEffect(() => {
+    if (!user || courses.length === 0) return;
     setSelectedCourseId((previous) => {
-      if (previous && teacherCourses.some((course) => String(course.id) === previous)) {
-        return previous;
-      }
-
-      if (requestedCourseId && teacherCourses.some((course) => String(course.id) === requestedCourseId)) {
-        return requestedCourseId;
-      }
-
-      return teacherCourses[0] ? String(teacherCourses[0].id) : '';
+      if (previous && courses.some((c) => String(c.id) === previous)) return previous;
+      if (requestedCourseId && courses.some((c) => String(c.id) === requestedCourseId)) return requestedCourseId;
+      return courses[0] ? String(courses[0].id) : '';
     });
-  }, [requestedCourseId, user]);
+    setLoading(false);
+  }, [courses, requestedCourseId, user]);
 
-  const loadCourseContext = useCallback(async (courseId: string, signal?: AbortSignal) => {
-    if (!courseId) {
-      setEnrollments([]);
-      setClassGroups([]);
-      return;
-    }
-
-    const [courseEnrollments, courseClassGroups] = await Promise.all([
-      courseApi.getEnrollmentsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]),
-      courseApi.getClassGroupsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as ClassGroup[]),
-    ]);
-
-    setEnrollments(courseEnrollments);
-    setClassGroups(courseClassGroups);
-  }, []);
-
-  const refreshMembershipState = useCallback(async (courseId: string, signal?: AbortSignal) => {
-    const [allStudents, everyEnrollment, courseEnrollments, courseClassGroups] = await Promise.all([
-      userApi.getStudents({ page: 1, pageSize: 100, signal }),
-      courseApi.getEnrollments({ page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]),
-      courseId ? courseApi.getEnrollmentsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as CourseEnrollment[]) : Promise.resolve([] as CourseEnrollment[]),
-      courseId ? courseApi.getClassGroupsByCourse(courseId, { page: 1, pageSize: 100, signal }).catch(() => [] as ClassGroup[]) : Promise.resolve([] as ClassGroup[]),
-    ]);
-    const teacherCourseIds = new Set(courses.map((course) => String(course.id)));
-
-    setStudents(allStudents);
-    setAllEnrollments(everyEnrollment.filter((row) => teacherCourseIds.has(getEnrollmentCourseId(row))));
-    setEnrollments(courseEnrollments);
-    setClassGroups(courseClassGroups);
-  }, [courses]);
-
+  // Track per-course loading state for the refreshing indicator
   useEffect(() => {
-    const controller = new AbortController();
+    setRefreshing(enrollmentsLoading);
+  }, [enrollmentsLoading]);
 
-    setLoading(true);
-    setError(null);
-
-    void loadBaseData(controller.signal)
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load courses or students.'));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [loadBaseData]);
-
+  // Override loading to false once students are available
   useEffect(() => {
-    const controller = new AbortController();
+    if (!studentsLoading) setLoading(false);
+  }, [studentsLoading]);
 
-    if (!selectedCourseId) {
-      setEnrollments([]);
-      setClassGroups([]);
-      setSelectedStudentId('');
-      return () => controller.abort();
-    }
-
-    setRefreshing(true);
-    setError(null);
-
-    void loadCourseContext(selectedCourseId, controller.signal)
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load the selected course context.'));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setRefreshing(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [loadCourseContext, selectedCourseId]);
+  const refreshMembershipState = useCallback(async () => {
+    // Invalidate caches so React Query refetches the changed data
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['students'] }),
+      queryClient.invalidateQueries({ queryKey: ['enrollments'] }),
+      queryClient.invalidateQueries({ queryKey: ['enrollments-by-course', selectedCourseId] }),
+      queryClient.invalidateQueries({ queryKey: ['class-groups-by-course', selectedCourseId] }),
+    ]);
+  }, [queryClient, selectedCourseId]);
 
   useEffect(() => {
     if (!selectedCourseId) {
@@ -417,14 +344,7 @@ const CourseEnrollments: React.FC = () => {
     [courses, selectedCourseId],
   );
 
-  const memberRows = useMemo(() => {
-    if (!selectedCourseId) {
-      return [];
-    }
-
-    return buildCourseMemberRows(courses, students, enrollments, selectedCourseId);
-  }, [courses, enrollments, selectedCourseId, students]);
-
+  // Compute tableRows once from allEnrollments — covers all courses or just the selected one
   const tableRows = useMemo(() => {
     const baseRows = selectedCourseId
       ? buildCourseMemberRows(courses, students, allEnrollments, selectedCourseId)
@@ -435,6 +355,12 @@ const CourseEnrollments: React.FC = () => {
       return haystack.includes(search.toLowerCase());
     });
   }, [allEnrollments, courses, search, selectedCourseId, students]);
+
+  // memberRows re-uses tableRows (already filtered to selectedCourseId) instead of calling buildCourseMemberRows again
+  const memberRows = useMemo(
+    () => (selectedCourseId ? tableRows.filter((r) => r.courseId === selectedCourseId) : []),
+    [selectedCourseId, tableRows],
+  );
 
   const enrolledStudentIds = useMemo(
     () => new Set(memberRows.map((row) => row.studentId)),
@@ -519,14 +445,14 @@ const CourseEnrollments: React.FC = () => {
 
     try {
       await courseApi.createEnrollment({ courseId: selectedCourseId, studentId: selectedStudentId });
-      await refreshMembershipState(selectedCourseId);
+      await refreshMembershipState();
       setSelectedStudentId('');
       showToast('success', 'Student enrolled', 'The selected student was added to the course.');
     } catch (err) {
       if (isNullParseEnrollmentError(err)) {
         try {
           await userApi.updateStudent(selectedStudentId, { courseId: selectedCourseId });
-          await refreshMembershipState(selectedCourseId);
+          await refreshMembershipState();
           setSelectedStudentId('');
           showToast('success', 'Student assigned', 'The enrollment endpoint rejected the request, so the student was linked through the student profile API instead.');
         } catch (fallbackErr) {
@@ -573,7 +499,7 @@ const CourseEnrollments: React.FC = () => {
         throw new Error('The backend did not accept the membership removal request.');
       }
 
-      await refreshMembershipState(selectedCourseId || targetCourseId);
+      await refreshMembershipState();
       showToast('success', 'Membership removed', 'The student was removed from this course.');
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to remove the selected enrollment.'));
@@ -603,7 +529,7 @@ const CourseEnrollments: React.FC = () => {
       });
 
       const createdStudent = await userApi.registerStudent(payload);
-      await refreshMembershipState(selectedCourseId);
+      await refreshMembershipState();
       setSingleForm((previous) => ({
         ...previous,
         fullName: '',
@@ -662,7 +588,7 @@ const CourseEnrollments: React.FC = () => {
       }));
 
       const createdStudents = await userApi.registerStudentsBulk(payloads);
-      await refreshMembershipState(selectedCourseId);
+      await refreshMembershipState();
       setBulkRows([]);
       setBulkFileName('');
       showToast(

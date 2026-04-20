@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { courseApi, examApi, questionApi, type Course, type Exam, type Question, type VisibilityMode } from '../../api';
+import { examApi, questionApi, type Exam, type Question, type VisibilityMode } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
+import { normalizeExamStatus } from '../../utils/queryme';
+import { useTeacherCourses } from '../../hooks/useTeacherCourses';
 
 interface QuestionDraft {
   localId: string;
@@ -64,7 +65,8 @@ const ExamBuilder: React.FC = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [courses, setCourses] = useState<Course[]>([]);
+  // Use shared cached courses instead of fetching on mount
+  const { data: courses } = useTeacherCourses(user?.id);
   const [title, setTitle] = useState('');
   const [courseId, setCourseId] = useState('');
   const [description, setDescription] = useState('');
@@ -75,7 +77,7 @@ const ExamBuilder: React.FC = () => {
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
   const [examStatus, setExamStatus] = useState('DRAFT');
   const [workingExamId, setWorkingExamId] = useState<string | null>(examId ?? null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(examId)); // only show skeleton when editing existing
   const [saving, setSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +86,8 @@ const ExamBuilder: React.FC = () => {
   const readOnly = useMemo(() => Boolean(activeExamId) && examStatus !== 'DRAFT', [activeExamId, examStatus]);
   const requestedCourseId = searchParams.get('courseId') || '';
 
+  // Load exam data (and set initial courseId) when editing an existing exam.
+  // Course list comes from the shared cache — no need to fetch here.
   useEffect(() => {
     const controller = new AbortController();
 
@@ -93,44 +97,38 @@ const ExamBuilder: React.FC = () => {
         return;
       }
 
+      // When creating a new exam, set the default course from cache (no extra request)
+      if (!examId) {
+        const preferredCourseId = requestedCourseId && courses.some((c) => String(c.id) === requestedCourseId)
+          ? requestedCourseId
+          : courses[0]
+            ? String(courses[0].id)
+            : '';
+        setCourseId((previous) => previous || preferredCourseId);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
       try {
-        const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal });
-        const teacherCourses = filterCoursesByTeacher(allCourses, user.id);
+        const [exam, existingQuestions] = await Promise.all([
+          examApi.getExam(examId, controller.signal),
+          questionApi.getQuestions(examId, controller.signal),
+        ]);
 
         if (!controller.signal.aborted) {
-          setCourses(teacherCourses);
-          if (!examId) {
-            const preferredCourseId = requestedCourseId && teacherCourses.some((course) => String(course.id) === requestedCourseId)
-              ? requestedCourseId
-              : teacherCourses[0]
-                ? String(teacherCourses[0].id)
-                : '';
-
-            setCourseId((previous) => previous || preferredCourseId);
-          }
-        }
-
-        if (examId) {
-          const [exam, existingQuestions] = await Promise.all([
-            examApi.getExam(examId, controller.signal),
-            questionApi.getQuestions(examId, controller.signal),
-          ]);
-
-          if (!controller.signal.aborted) {
-            setWorkingExamId(String(exam.id));
-            setTitle(exam.title);
-            setCourseId(String(exam.courseId));
-            setDescription(exam.description || '');
-            setMaxAttempts(exam.maxAttempts ?? 1);
-            setTimeLimitMins(exam.timeLimitMins ?? exam.timeLimit ?? 60);
-            setVisibilityMode(String(exam.visibilityMode || DEFAULT_VISIBILITY));
-            setSeedSql(String(exam.seedSql || ''));
-            setExamStatus(normalizeExamStatus(exam.status) || 'DRAFT');
-            setQuestions(existingQuestions.length ? existingQuestions.map((question) => createQuestionDraft(question)) : []);
-          }
+          setWorkingExamId(String(exam.id));
+          setTitle(exam.title);
+          setCourseId(String(exam.courseId));
+          setDescription(exam.description || '');
+          setMaxAttempts(exam.maxAttempts ?? 1);
+          setTimeLimitMins(exam.timeLimitMins ?? exam.timeLimit ?? 60);
+          setVisibilityMode(String(exam.visibilityMode || DEFAULT_VISIBILITY));
+          setSeedSql(String(exam.seedSql || ''));
+          setExamStatus(normalizeExamStatus(exam.status) || 'DRAFT');
+          setQuestions(existingQuestions.length ? existingQuestions.map((question) => createQuestionDraft(question)) : []);
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -145,7 +143,7 @@ const ExamBuilder: React.FC = () => {
 
     void loadBuilder();
     return () => controller.abort();
-  }, [examId, requestedCourseId, user]);
+  }, [examId, requestedCourseId, user, courses]);
 
   const updateQuestion = (localId: string, patch: Partial<QuestionDraft>) => {
     setQuestions((previous) => previous.map((question) => (question.localId === localId ? { ...question, ...patch } : question)));

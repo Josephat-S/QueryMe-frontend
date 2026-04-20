@@ -1,52 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { courseApi, type Course } from '../../api';
+import { useQueryClient } from '@tanstack/react-query';
+import { courseApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useToast } from '../../components/ToastContext';
 import { useAuth } from '../../contexts';
 import { useTheme } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher } from '../../utils/queryme';
+import { useTeacherCourses } from '../../hooks/useTeacherCourses';
 
 const TeacherCourses: React.FC = () => {
   const { user } = useAuth();
   const { isDarkMode } = useTheme();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const queryClient = useQueryClient();
+  const { data: courses, loading, error: coursesError, refresh } = useTeacherCourses(user?.id);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const loadCourses = useCallback(async (signal?: AbortSignal) => {
-    if (!user) {
-      setCourses([]);
-      return;
-    }
-
-    const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal });
-    setCourses(filterCoursesByTeacher(allCourses, user.id));
-  }, [user]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    void loadCourses(controller.signal)
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load your courses.'));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [loadCourses]);
 
   const sortedCourses = useMemo(
     () => [...courses].sort((left, right) => left.name.localeCompare(right.name)),
@@ -60,12 +33,7 @@ const TeacherCourses: React.FC = () => {
 
   const handleRefresh = async () => {
     setError(null);
-
-    try {
-      await loadCourses();
-    } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to refresh your courses.'));
-    }
+    await refresh();
   };
 
   const handleCreateCourse = async (event: React.FormEvent) => {
@@ -85,10 +53,8 @@ const TeacherCourses: React.FC = () => {
         description: description.trim() || undefined,
       });
 
-      setCourses((previous) => {
-        const remainingCourses = previous.filter((course) => String(course.id) !== String(createdCourse.id));
-        return [...remainingCourses, createdCourse];
-      });
+      // Invalidate the shared courses cache so all pages see the new course
+      await queryClient.invalidateQueries({ queryKey: ['courses'] });
       setName('');
       setDescription('');
       showToast('success', 'Course created', `"${createdCourse.name}" is now ready for exams and enrollments.`);
@@ -103,6 +69,8 @@ const TeacherCourses: React.FC = () => {
     return <PageSkeleton title="Courses" rows={5} />;
   }
 
+  const pageError = error || coursesError;
+
   return (
     <div className="teacher-page" style={{ padding: 'clamp(12px, 2.8vw, 24px)', overflowY: 'auto' }}>
       <div className="page-header">
@@ -116,7 +84,7 @@ const TeacherCourses: React.FC = () => {
         <div className="stat-card"><div className="stat-card-value">{sortedCourses.length - describedCourses}</div><div className="stat-card-label">Need Description</div></div>
       </div>
 
-      {error && <div style={{ marginBottom: '16px', color: '#e53e3e', fontSize: '13px' }}>{error}</div>}
+      {pageError && <div style={{ marginBottom: '16px', color: '#e53e3e', fontSize: '13px' }}>{pageError}</div>}
 
       <div className="course-page-grid" style={{ gap: '20px', width: '100%' }}>
         <div className="content-card">

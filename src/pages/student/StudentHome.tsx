@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { examApi, resultApi, sessionApi, type Exam, type StudentExamResult } from '../../api';
+import { useQueries } from '@tanstack/react-query';
+import { resultApi, type Exam, type StudentExamResult } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
-import { extractErrorMessage } from '../../utils/errorUtils';
 import {
   formatDateTime,
   getCourseName,
@@ -11,6 +11,8 @@ import {
   isSessionComplete,
   normalizeExamStatus,
 } from '../../utils/queryme';
+import { usePublishedExams } from '../../hooks/usePublishedExams';
+import { useStudentSessions } from '../../hooks/useStudentSessions';
 
 interface UpcomingExamItem {
   id: string;
@@ -39,161 +41,105 @@ interface RecentResultItem {
 const StudentHome: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [upcomingExams, setUpcomingExams] = useState<UpcomingExamItem[]>([]);
-  const [recentResults, setRecentResults] = useState<RecentResultItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [pendingStartExam, setPendingStartExam] = useState<Pick<UpcomingExamItem, 'id' | 'title' | 'duration'> | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  // ── Cached hooks (no manual useEffect needed) ────────────────────────
+  const { data: publishedExams, loading: examsLoading, error: examsError } = usePublishedExams();
+  const { data: sessions, loading: sessionsLoading, error: sessionsError } = useStudentSessions(user?.id);
 
-    const loadDashboard = async () => {
-      if (!user) {
-        setError('Please sign in to see your dashboard.');
-        setLoading(false);
-        return;
+  const loading = examsLoading || sessionsLoading;
+  const error = examsError || sessionsError;
+
+  // Recent sessions — top 4, sorted by latest
+  const recentSessions = useMemo(() => (
+    [...sessions]
+      .filter((s) => isSessionComplete(s))
+      .sort((a, b) => new Date(b.submittedAt || b.startedAt || 0).getTime() - new Date(a.submittedAt || a.startedAt || 0).getTime())
+      .slice(0, 4)
+  ), [sessions]);
+
+  // Fetch results for each recent session in parallel — each is cached individually
+  const resultQueries = useQueries({
+    queries: recentSessions.map((session) => ({
+      queryKey: ['session-result', String(session.id)],
+      queryFn: ({ signal }: { signal?: AbortSignal }) =>
+        resultApi.getSessionResult(String(session.id), signal).catch(() => null as StudentExamResult | null),
+      staleTime: 60_000,
+      enabled: Boolean(session.id),
+    })),
+  });
+
+  const publishedExamById = useMemo(
+    () => new Map((publishedExams as Exam[]).map((exam) => [String(exam.id), exam])),
+    [publishedExams],
+  );
+
+  const completedAttemptsByExam = useMemo(() => (
+    sessions.reduce<Record<string, number>>((acc, session) => {
+      if (!isSessionComplete(session)) return acc;
+      const examId = String(session.examId);
+      acc[examId] = (acc[examId] || 0) + 1;
+      return acc;
+    }, {})
+  ), [sessions]);
+
+  const upcomingExams = useMemo<UpcomingExamItem[]>(() => (
+    (publishedExams as Exam[]).map((exam) => {
+      const examId = String(exam.id);
+      const attemptsUsed = completedAttemptsByExam[examId] || 0;
+      const maxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
+      const status = normalizeExamStatus(exam.status);
+      let actionLabel: string;
+      let actionDisabled: boolean;
+      let actionState: UpcomingExamItem['actionState'];
+      let attemptsSummary: string;
+
+      if (status === 'CLOSED') {
+        actionLabel = 'Closed'; actionDisabled = true; actionState = 'CLOSED';
+        attemptsSummary = `Attempts: ${Math.min(attemptsUsed, maxAttempts)}/${maxAttempts}`;
+      } else if (attemptsUsed <= 0) {
+        actionLabel = 'Start'; actionDisabled = false; actionState = 'START';
+        attemptsSummary = `Attempts: 0/${maxAttempts}`;
+      } else if (attemptsUsed < maxAttempts) {
+        actionLabel = 'Re-attempt'; actionDisabled = false; actionState = 'REATTEMPT';
+        attemptsSummary = `Attempts: ${attemptsUsed}/${maxAttempts}`;
+      } else {
+        actionLabel = 'Attempted'; actionDisabled = true; actionState = 'ATTEMPTED';
+        attemptsSummary = `Attempts: ${maxAttempts}/${maxAttempts}`;
       }
 
-      setLoading(true);
-      setError(null);
+      return {
+        id: examId,
+        title: exam.title,
+        course: getCourseName(exam.course, exam.courseId),
+        duration: getExamTimeLimit(exam) ? `${getExamTimeLimit(exam)} min` : 'No limit',
+        visibilityMode: String(exam.visibilityMode || 'N/A'),
+        actionLabel, actionDisabled, actionState, attemptsSummary,
+      };
+    })
+  ), [completedAttemptsByExam, publishedExams]);
 
-      try {
-        const [publishedExams, sessions] = await Promise.all([
-          examApi.getPublishedExams({ page: 1, pageSize: 5, signal: controller.signal }),
-          sessionApi.getSessionsByStudent(user.id, { signal: controller.signal }),
-        ]);
+  const recentResults = useMemo<RecentResultItem[]>(() => (
+    recentSessions.map((session, index) => {
+      const exam = publishedExamById.get(String(session.examId)) || null;
+      const result = resultQueries[index]?.data ?? null;
+      const total = result?.totalMaxScore ?? 0;
+      const score = result?.totalScore ?? 0;
+      const visible = result?.visible ?? false;
+      const statusLabel = visible
+        ? total > 0 && score >= total / 2 ? 'Passed' : 'Reviewed'
+        : (session.isSubmitted || session.submittedAt) ? 'Awaiting release' : 'In progress';
 
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        const completedAttemptsByExam = sessions.reduce<Record<string, number>>((accumulator, session) => {
-          if (!isSessionComplete(session)) {
-            return accumulator;
-          }
-
-          const examId = String(session.examId);
-          accumulator[examId] = (accumulator[examId] || 0) + 1;
-          return accumulator;
-        }, {});
-
-        setUpcomingExams(
-          publishedExams
-            .map((exam) => ({
-              id: String(exam.id),
-              title: exam.title,
-              course: getCourseName(exam.course, exam.courseId),
-              duration: getExamTimeLimit(exam) ? `${getExamTimeLimit(exam)} min` : 'No limit',
-              visibilityMode: String(exam.visibilityMode || 'N/A'),
-              ...(() => {
-                const examId = String(exam.id);
-                const attemptsUsed = completedAttemptsByExam[examId] || 0;
-                const maxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
-                const status = normalizeExamStatus(exam.status);
-
-                if (status === 'CLOSED') {
-                  return {
-                    actionLabel: 'Closed',
-                    actionDisabled: true,
-                    actionState: 'CLOSED' as const,
-                    attemptsSummary: `Attempts: ${Math.min(attemptsUsed, maxAttempts)}/${maxAttempts}`,
-                  };
-                }
-
-                if (attemptsUsed <= 0) {
-                  return {
-                    actionLabel: 'Start',
-                    actionDisabled: false,
-                    actionState: 'START' as const,
-                    attemptsSummary: `Attempts: 0/${maxAttempts}`,
-                  };
-                }
-
-                if (attemptsUsed < maxAttempts) {
-                  return {
-                    actionLabel: 'Re-attempt',
-                    actionDisabled: false,
-                    actionState: 'REATTEMPT' as const,
-                    attemptsSummary: `Attempts: ${attemptsUsed}/${maxAttempts}`,
-                  };
-                }
-
-                return {
-                  actionLabel: 'Attempted',
-                  actionDisabled: true,
-                  actionState: 'ATTEMPTED' as const,
-                  attemptsSummary: `Attempts: ${maxAttempts}/${maxAttempts}`,
-                };
-              })(),
-            })),
-        );
-
-        const publishedExamById = new Map(publishedExams.map((exam) => [String(exam.id), exam]));
-
-        const recentSessionDetails = await Promise.all(
-          [...sessions]
-            .sort((left, right) => {
-              const leftTime = new Date(left.submittedAt || left.startedAt || 0).getTime();
-              const rightTime = new Date(right.submittedAt || right.startedAt || 0).getTime();
-              return rightTime - leftTime;
-            })
-            .slice(0, 4)
-            .map(async (session) => {
-              const exam = publishedExamById.get(String(session.examId)) || null as Exam | null;
-              const result = await resultApi.getSessionResult(String(session.id), controller.signal).catch(() => null as StudentExamResult | null);
-
-              return {
-                session,
-                exam,
-                result,
-              };
-            }),
-        );
-
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setRecentResults(
-          recentSessionDetails.map(({ session, exam, result }) => {
-            const total = result?.totalMaxScore ?? 0;
-            const score = result?.totalScore ?? 0;
-            const visible = result?.visible ?? false;
-            const statusLabel = visible
-              ? total > 0 && score >= total / 2
-                ? 'Passed'
-                : 'Reviewed'
-              : (session.isSubmitted || session.submittedAt) ? 'Awaiting release' : 'In progress';
-
-            return {
-              sessionId: String(session.id),
-              examId: String(session.examId),
-              title: exam?.title || 'Exam',
-              course: getCourseName(exam?.course, exam?.courseId),
-              submittedAt: session.submittedAt || session.startedAt || '',
-              score,
-              total,
-              visible,
-              statusLabel,
-            };
-          }),
-        );
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Unable to load your dashboard.'));
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadDashboard();
-
-    return () => controller.abort();
-  }, [user]);
+      return {
+        sessionId: String(session.id),
+        examId: String(session.examId),
+        title: exam?.title || 'Exam',
+        course: getCourseName(exam?.course, exam?.courseId),
+        submittedAt: session.submittedAt || session.startedAt || '',
+        score, total, visible, statusLabel,
+      };
+    })
+  ), [publishedExamById, recentSessions, resultQueries]);
 
   const averageScore = useMemo(() => {
     const visibleResults = recentResults.filter((result) => result.visible && result.total > 0);

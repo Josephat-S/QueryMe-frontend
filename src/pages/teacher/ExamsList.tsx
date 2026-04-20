@@ -1,16 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { courseApi, examApi, type Course, type Exam } from '../../api';
+import { useQueryClient, useQueries } from '@tanstack/react-query';
+import { examApi, type Exam } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
+import { normalizeExamStatus } from '../../utils/queryme';
+import { useTeacherCourses } from '../../hooks/useTeacherCourses';
 
 interface ExamRow {
   id: string;
   title: string;
   course: string;
+  courseId: string;
   status: string;
   questionsCount: number;
   maxAttempts: number;
@@ -21,97 +24,61 @@ const ExamsList: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [exams, setExams] = useState<ExamRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const { data: courses, loading: coursesLoading } = useTeacherCourses(user?.id);
+
+  // Fetch exams for each course individually so each is cached separately
+  const courseChunks = courses.slice(0, 50); // cap at 50 courses
+  const examQueries = useQueries({
+    queries: courseChunks.map((course) => ({
+      queryKey: ['exams-by-course', String(course.id)],
+      queryFn: ({ signal }: { signal?: AbortSignal }) =>
+        examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[]),
+      staleTime: 60_000,
+      enabled: courses.length > 0,
+    })),
+  });
+
+  const loading = coursesLoading || examQueries.some((q) => q.isLoading);
   const [busyExamId, setBusyExamId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async (signal?: AbortSignal) => {
-    if (!user) {
-      setExams([]);
-      return;
-    }
-
-    const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal });
-    const accessibleCourses = filterCoursesByTeacher(allCourses, user.id);
-
-    // Fetch exams in chunks to avoid overwhelming the browser connection pool
-    const uniqueExams: Exam[] = [];
-    const CHUNK_SIZE = 5;
-    for (let i = 0; i < accessibleCourses.length; i += CHUNK_SIZE) {
-      const chunk = accessibleCourses.slice(i, i + CHUNK_SIZE);
-      if (signal?.aborted) break;
-
-      const examLists = await Promise.all(
-        chunk.map((course) =>
-          examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[]),
-        ),
-      );
-
-      examLists.flat().forEach((exam) => {
-        if (!uniqueExams.find(existing => String(existing.id) === String(exam.id))) {
-          uniqueExams.push(exam);
-        }
-      });
-    }
-
-    const courseNamesById = accessibleCourses.reduce<Record<string, string>>((acc, course) => {
+  const courseNamesById = useMemo<Record<string, string>>(() => (
+    courses.reduce<Record<string, string>>((acc, course) => {
       const id = String(course.id || '');
       const name = course.name?.trim();
-
-      if (id && name) {
-        acc[id] = name;
-      }
-
+      if (id && name) acc[id] = name;
       return acc;
-    }, {});
+    }, {})
+  ), [courses]);
 
-    // We'll skip upfront question counts for all exams to speed up load.
-    // If the backend didn't include them, we show a dash or 0.
-    
-    const rows = uniqueExams
+  const exams = useMemo<ExamRow[]>(() => {
+    const allExams = examQueries.flatMap((q) => q.data ?? []);
+    const unique = [...new Map(allExams.map((exam) => [String(exam.id), exam])).values()];
+
+    return unique
       .map((exam) => ({
         id: String(exam.id),
         title: exam.title,
         course: exam.course?.name?.trim() || courseNamesById[String(exam.courseId)] || 'Unknown Course',
+        courseId: String(exam.courseId || ''),
         status: normalizeExamStatus(exam.status) || 'DRAFT',
         questionsCount: exam.questions?.length ?? 0,
         maxAttempts: exam.maxAttempts ?? 1,
         visibilityMode: String(exam.visibilityMode || 'N/A'),
       }))
       .sort((left, right) => left.title.localeCompare(right.title));
-
-    setCourses(accessibleCourses);
-    setExams(rows);
-  }, [user]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    void loadData(controller.signal)
-      .catch((err) => {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load your exams.'));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [loadData]);
+  }, [examQueries, courseNamesById]);
 
   const stats = useMemo(() => ({
     total: exams.length,
-    published: exams.filter((exam) => exam.status === 'PUBLISHED').length,
-    drafts: exams.filter((exam) => exam.status === 'DRAFT').length,
-    closed: exams.filter((exam) => exam.status === 'CLOSED').length,
+    published: exams.filter((e) => e.status === 'PUBLISHED').length,
+    drafts: exams.filter((e) => e.status === 'DRAFT').length,
+    closed: exams.filter((e) => e.status === 'CLOSED').length,
   }), [exams]);
 
-  const runAction = async (examId: string, action: 'publish' | 'unpublish' | 'close' | 'delete') => {
+  const runAction = async (examId: string, courseId: string, action: 'publish' | 'unpublish' | 'close' | 'delete') => {
     setBusyExamId(examId);
     setError(null);
 
@@ -126,7 +93,11 @@ const ExamsList: React.FC = () => {
         await examApi.deleteExam(examId);
       }
 
-      await loadData();
+      // Invalidate the specific course's exam cache and published exams cache
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['exams-by-course', courseId] }),
+        queryClient.invalidateQueries({ queryKey: ['published-exams'] }),
+      ]);
       showToast('success', 'Exam updated', `The exam action "${action}" completed successfully.`);
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to update the selected exam.'));
@@ -209,22 +180,22 @@ const ExamsList: React.FC = () => {
                         Edit
                       </button>
                       {exam.status === 'DRAFT' && (
-                        <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'publish')}>
+                        <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'publish')}>
                           Publish
                         </button>
                       )}
                       {exam.status === 'PUBLISHED' && (
                         <>
-                          <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'unpublish')}>
+                          <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'unpublish')}>
                             Unpublish
                           </button>
-                          <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'close')}>
+                          <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'close')}>
                             Close
                           </button>
                         </>
                       )}
                       {exam.status === 'DRAFT' && (
-                        <button className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'delete')}>
+                        <button className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'delete')}>
                           Delete
                         </button>
                       )}
@@ -252,22 +223,22 @@ const ExamsList: React.FC = () => {
                     Edit
                   </button>
                   {exam.status === 'DRAFT' && (
-                    <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'publish')}>
+                    <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'publish')}>
                       Publish
                     </button>
                   )}
                   {exam.status === 'PUBLISHED' && (
                     <>
-                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'unpublish')}>
+                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'unpublish')}>
                         Unpublish
                       </button>
-                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'close')}>
+                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'close')}>
                         Close
                       </button>
                     </>
                   )}
                   {exam.status === 'DRAFT' && (
-                    <button className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, 'delete')}>
+                    <button className="inline-flex items-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'delete')}>
                       Delete
                     </button>
                   )}
