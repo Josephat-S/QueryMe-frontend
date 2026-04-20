@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { courseApi, examApi, resultApi, type Exam, type TeacherResultRow } from '../../api';
+import { useQueries } from '@tanstack/react-query';
+import { examApi, type Exam, type TeacherResultRow } from '../../api';
 import { useAuth } from '../../contexts';
-import { extractErrorMessage } from '../../utils/errorUtils';
-import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
+import { normalizeExamStatus } from '../../utils/queryme';
 import { PageSkeleton } from '../../components/PageSkeleton';
+import { useTeacherCourses } from '../../hooks/useTeacherCourses';
+import { useTeacherResults } from '../../hooks/useTeacherResults';
 
 interface RecentStudentActivity {
   studentId: string;
@@ -17,108 +19,58 @@ const getSubmissionTimestamp = (submittedAt?: string) => new Date(submittedAt ||
 
 const TeacherHome: React.FC = () => {
   const { user } = useAuth();
-  const [stats, setStats] = useState({
-    exams: 0,
-    published: 0,
-    drafts: 0,
-    submissions: 0,
+
+  const { data: courses, loading: coursesLoading, error: coursesError } = useTeacherCourses(user?.id);
+  const { data: submissionRows, loading: resultsLoading, error: resultsError } = useTeacherResults(user?.id);
+
+  // Fetch exams for first 3 courses in parallel — each is individually cached
+  const firstThreeCourses = courses.slice(0, 3);
+  const examQueries = useQueries({
+    queries: firstThreeCourses.map((course) => ({
+      queryKey: ['exams-by-course', String(course.id)],
+      queryFn: ({ signal }: { signal?: AbortSignal }) =>
+        examApi.getExamsByCourse(String(course.id), { signal }),
+      staleTime: 60_000,
+      enabled: firstThreeCourses.length > 0,
+    })),
   });
-  const [submissionRows, setSubmissionRows] = useState<TeacherResultRow[]>([]);
-  const [courseExams, setCourseExams] = useState<Exam[]>([]);
-  const [courseNamesById, setCourseNamesById] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const loading = coursesLoading || resultsLoading || examQueries.some((q) => q.isLoading);
+  const error = coursesError || resultsError || null;
 
-    const loadDashboard = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+  const courseExams = useMemo<Exam[]>(() => {
+    const allExams = examQueries.flatMap((q) => q.data ?? []);
+    // Deduplicate by id
+    return [...new Map(allExams.map((exam) => [String(exam.id), exam])).values()];
+  }, [examQueries]);
 
-      setLoading(true);
-      setError(null);
+  const courseNamesById = useMemo<Record<string, string>>(() => (
+    courses.reduce<Record<string, string>>((acc, course) => {
+      const id = String(course.id || '');
+      const name = course.name?.trim();
+      if (id && name) acc[id] = name;
+      return acc;
+    }, {})
+  ), [courses]);
 
-      try {
-        // Fetch courses and submissions in parallel
-        const [courses, submissions] = await Promise.all([
-          courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal }),
-          resultApi.getResultsByTeacher(user.id, { page: 1, pageSize: 20, signal: controller.signal }).catch(() => [] as TeacherResultRow[]),
-        ]);
-        const teacherCourses = filterCoursesByTeacher(courses, user.id);
-        const nextCourseNamesById = teacherCourses.reduce<Record<string, string>>((acc, course) => {
-          const id = String(course.id || '');
-          const name = course.name?.trim();
-
-          if (id && name) {
-            acc[id] = name;
-          }
-
-          return acc;
-        }, {});
-
-        // Fetch exams for first 3 courses in parallel with already-fetched submissions
-        const coursesToFetch = teacherCourses.slice(0, 3);
-        const examLists = await Promise.all(
-          coursesToFetch.map((course) => examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[])),
-        );
-
-        const exams = [...new Map(
-          examLists
-            .flat()
-            .map((exam) => [String(exam.id), exam]),
-        ).values()];
-        const publishedExams = exams.filter((exam) => normalizeExamStatus(exam.status) === 'PUBLISHED');
-
-        if (!controller.signal.aborted) {
-          setStats({
-            exams: exams.length,
-            published: publishedExams.length,
-            drafts: exams.length - publishedExams.length,
-            submissions: submissions.length,
-          });
-          setCourseExams(exams);
-          setCourseNamesById(nextCourseNamesById);
-          setSubmissionRows(submissions);
-          setLoading(false);
-          setLoadingSubmissions(false);
-        }
-
-        setLoadingSubmissions(false);
-
-        if (!controller.signal.aborted) {
-          setStats((prev) => ({
-            ...prev,
-            submissions: submissions.length,
-          }));
-          setSubmissionRows(submissions);
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load teacher dashboard data.'));
-          setLoading(false);
-          setLoadingSubmissions(false);
-        }
-      }
+  const stats = useMemo(() => {
+    const published = courseExams.filter((e) => normalizeExamStatus(e.status) === 'PUBLISHED').length;
+    return {
+      exams: courseExams.length,
+      published,
+      drafts: courseExams.length - published,
+      submissions: submissionRows.length,
     };
+  }, [courseExams, submissionRows]);
 
-    void loadDashboard();
-    return () => controller.abort();
-  }, [user]);
-
-  const recentStudents = useMemo(() => {
+  const recentStudents = useMemo<RecentStudentActivity[]>(() => {
     const studentsMap = new Map<string, RecentStudentActivity>();
 
-    submissionRows.forEach((row) => {
+    (submissionRows as TeacherResultRow[]).forEach((row) => {
       const studentId = String(row.studentId || '');
       const studentName = String(row.studentName || 'Unknown Student');
 
-      if (!studentId) {
-        return;
-      }
+      if (!studentId) return;
 
       const existing = studentsMap.get(studentId);
       if (existing) {
@@ -142,11 +94,10 @@ const TeacherHome: React.FC = () => {
   }, [submissionRows]);
 
   const averageScore = useMemo(() => {
-    const validRows = submissionRows.filter((row) => typeof row.score === 'number' && typeof row.maxScore === 'number');
-    if (validRows.length === 0) {
-      return 0;
-    }
-
+    const validRows = (submissionRows as TeacherResultRow[]).filter(
+      (row) => typeof row.score === 'number' && typeof row.maxScore === 'number',
+    );
+    if (validRows.length === 0) return 0;
     return Math.round(
       validRows.reduce((sum, row) => sum + ((row.score || 0) / (row.maxScore || 1)) * 100, 0) / validRows.length,
     );
@@ -197,11 +148,11 @@ const TeacherHome: React.FC = () => {
           <div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Published Exams</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-3xl font-semibold tracking-tight text-slate-900">{loadingSubmissions && stats.submissions === 0 ? '...' : stats.submissions}</div>
+          <div className="text-3xl font-semibold tracking-tight text-slate-900">{stats.submissions}</div>
           <div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tracked Submissions</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-3xl font-semibold tracking-tight text-slate-900">{loadingSubmissions ? '...' : `${averageScore}%`}</div>
+          <div className="text-3xl font-semibold tracking-tight text-slate-900">{`${averageScore}%`}</div>
           <div className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Recent Average</div>
         </div>
       </div>
@@ -213,32 +164,26 @@ const TeacherHome: React.FC = () => {
             <Link to="/teacher/results" className="text-sm font-semibold text-emerald-600 transition hover:text-emerald-700">See all -&gt;</Link>
           </div>
           <div className="px-5 py-2">
-            {loadingSubmissions ? (
-              <div className="py-6 text-sm text-slate-500">Loading student activity...</div>
-            ) : (
-              <>
-                {recentStudents.map((student) => (
-                  <div key={student.studentId} className="flex items-center gap-3 border-b border-slate-100 py-3 last:border-0">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">{student.studentName.charAt(0).toUpperCase() || '?'}</div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-semibold text-slate-800">{student.studentName}</span>
-                      <span className="text-xs text-slate-500">Latest submission received</span>
-                    </div>
-                    <div className="ml-auto flex flex-col items-end">
-                      <span className="text-sm font-semibold text-emerald-600">
-                        {student.submissionCount} total
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}
-                      </span>
-                    </div>
+            <>
+              {recentStudents.map((student) => (
+                <div key={student.studentId} className="flex items-center gap-3 border-b border-slate-100 py-3 last:border-0">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">{student.studentName.charAt(0).toUpperCase() || '?'}</div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-semibold text-slate-800">{student.studentName}</span>
+                    <span className="text-xs text-slate-500">Latest submission received</span>
                   </div>
-                ))}
-                {recentStudents.length === 0 && (
-                  <div className="py-6 text-sm text-slate-500">Students with recent submissions will appear here.</div>
-                )}
-              </>
-            )}
+                  <div className="ml-auto flex flex-col items-end">
+                    <span className="text-sm font-semibold text-emerald-600">{student.submissionCount} total</span>
+                    <span className="text-xs text-slate-400">
+                      {student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {recentStudents.length === 0 && (
+                <div className="py-6 text-sm text-slate-500">Students with recent submissions will appear here.</div>
+              )}
+            </>
           </div>
         </div>
 

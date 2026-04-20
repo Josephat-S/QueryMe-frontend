@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { courseApi, userApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
@@ -8,8 +8,10 @@ import { filterCoursesByTeacher, getInitials } from '../../utils/queryme';
 
 const TeacherProfile: React.FC = () => {
   const { user, updateCurrentUser } = useAuth();
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  // nameOverride / emailOverride are null until the user edits a field.
+  // The derived name/email fall through to the fetched server data when null.
+  const [nameOverride, setNameOverride] = useState<string | null>(null);
+  const [emailOverride, setEmailOverride] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -33,12 +35,11 @@ const TeacherProfile: React.FC = () => {
     enabled: !!user,
   });
 
-  useEffect(() => {
-    if (profileData?.teacher) {
-      if (!name) setName(String(profileData.teacher.name || profileData.teacher.fullName || user?.name || ''));
-      if (!email) setEmail(String(profileData.teacher.email || user?.email || ''));
-    }
-  }, [profileData, user]);
+  // Derive display values: explicit user edits take priority, then fetched server data, then auth context.
+  const serverName = String(profileData?.teacher?.name || profileData?.teacher?.fullName || user?.name || '');
+  const serverEmail = String(profileData?.teacher?.email || user?.email || '');
+  const name = nameOverride ?? serverName;
+  const email = emailOverride ?? serverEmail;
 
   const courses = profileData?.ownedCourses || [];
   const error = fetchError instanceof Error ? fetchError.message : fetchError ? String(fetchError) : saveError;
@@ -61,6 +62,8 @@ const TeacherProfile: React.FC = () => {
       });
 
       updateCurrentUser({ ...user, name, email });
+      setNameOverride(null); // reset so derived value reflects updated auth context
+      setEmailOverride(null);
       setPassword('');
       setSuccess('Your teacher profile has been updated.');
     } catch (err) {
@@ -113,11 +116,11 @@ const TeacherProfile: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
                   <div>
                     <label className="profile-info-label">Full Name</label>
-                    <input className="form-input" value={name} onChange={(event) => setName(event.target.value)} style={{ width: '100%' }} />
+                    <input className="form-input" value={name} onChange={(e) => setNameOverride(e.target.value)} style={{ width: '100%' }} />
                   </div>
                   <div>
                     <label className="profile-info-label">Email</label>
-                    <input className="form-input" value={email} onChange={(event) => setEmail(event.target.value)} style={{ width: '100%' }} />
+                    <input className="form-input" value={email} onChange={(e) => setEmailOverride(e.target.value)} style={{ width: '100%' }} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label className="profile-info-label">New Password</label>
