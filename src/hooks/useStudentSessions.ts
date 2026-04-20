@@ -11,7 +11,7 @@ export const useStudentSessions = (studentId?: string) => {
     queryKey: ['student-sessions', studentId],
     queryFn: async ({ signal }) => {
       if (!studentId) return [];
-      return sessionApi.getSessionsByStudent(studentId, { signal });
+      return sessionApi.getSessionsByStudent(studentId, { page: 1, pageSize: 200, signal });
     },
     enabled: !!studentId,
     staleTime: 30_000,

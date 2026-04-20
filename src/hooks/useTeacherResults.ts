@@ -10,9 +10,12 @@ export const useTeacherResults = (teacherId?: string) => {
   } = useQuery({
     queryKey: ['teacher-results', teacherId],
     queryFn: ({ signal }) =>
-      resultApi.getResultsByTeacher(teacherId!, { page: 1, pageSize: 20, signal }),
+      resultApi.getResultsByTeacher(teacherId!, { page: 1, pageSize: 2000, signal })
+        .catch(() => [] as Awaited<ReturnType<typeof resultApi.getResultsByTeacher>>),
     enabled: Boolean(teacherId),
     staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: false, // don't retry on 4xx/5xx — surface the empty state immediately
   });
 
   return {

@@ -10,9 +10,10 @@ export const useSessionsByExam = (examId?: string) => {
   } = useQuery({
     queryKey: ['sessions-by-exam', examId],
     queryFn: ({ signal }) =>
-      sessionApi.getSessionsByExam(examId!, { page: 1, pageSize: 100, signal }),
+      sessionApi.getSessionsByExam(examId!, { page: 1, pageSize: 2000, signal }),
     enabled: Boolean(examId),
-    staleTime: 15_000,
+    staleTime: 30_000,
+    refetchInterval: 15_000, // Auto-poll every 15s to keep the monitor dashboard live
   });
 
   return {

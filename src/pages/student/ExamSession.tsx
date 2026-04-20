@@ -1,19 +1,16 @@
 /* eslint-disable react-x/no-array-index-key */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { examApi, questionApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse, type Session } from '../../api';
+import { examApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse, type Session } from '../../api';
 import { InlineSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getCourseName, getExamTimeLimit, getSessionRemainingMs, isSessionComplete } from '../../utils/queryme';
 import { EXAM_SESSION_TW } from '../../theme/twStyles';
+import { useStudentSessions } from '../../hooks/useStudentSessions';
+import { useQuestions } from '../../hooks/useQuestions';
 
-interface QuestionViewModel {
-  id: string;
-  number: number;
-  prompt: string;
-  marks: number;
-}
+
 
 interface SubmissionFeedback {
   visible: boolean;
@@ -24,12 +21,85 @@ interface SubmissionFeedback {
   message?: string;
 }
 
+// ── Isolated Timer Component to prevent full-page re-renders every second ──
+const ExamTimer: React.FC<{ session: Session; onExpire: () => void }> = ({ session, onExpire }) => {
+  const [timeLeftMs, setTimeLeftMs] = useState(() => getSessionRemainingMs(session));
+
+  useEffect(() => {
+    if (!session.expiresAt || isSessionComplete(session)) return undefined;
+
+    const interval = window.setInterval(() => {
+      const remaining = getSessionRemainingMs(session);
+      setTimeLeftMs(remaining);
+
+      if (remaining <= 0) {
+        window.clearInterval(interval);
+        onExpire();
+      }
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [session, onExpire]);
+
+  const totalSeconds = Math.max(0, Math.floor(timeLeftMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const color = timeLeftMs <= 5 * 60 * 1000 ? '#e53e3e' : timeLeftMs <= 15 * 60 * 1000 ? '#dd6b20' : '#38a169';
+
+  return (
+    <div className="exam-timer" style={{ color, borderColor: color }}>
+      {`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`}
+    </div>
+  );
+};
+
+// ── Isolated Editor Component to prevent full-page re-renders on keystroke ──
+const ExamEditor: React.FC<{
+  initialValue: string;
+  onChange: (value: string) => void;
+}> = ({ initialValue, onChange }) => {
+  const [localValue, setLocalValue] = useState(initialValue);
+
+  // Debounce the push to parent so the UI doesn't lag while typing rapidly
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localValue !== initialValue) {
+        onChange(localValue);
+      }
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [localValue, initialValue, onChange]);
+
+  const lines = useMemo(() => localValue.split('\n'), [localValue]);
+
+  return (
+    <div className="exam-editor-area">
+      <div className="exam-editor-gutter">
+        {lines.map((_, index) => (
+          <div key={`line-${index}`} className="exam-line-num">{index + 1}</div>
+        ))}
+      </div>
+      <textarea
+        className="exam-textarea"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={() => {
+          if (localValue !== initialValue) onChange(localValue);
+        }}
+        placeholder="-- Write your SQL query here..."
+        spellCheck={false}
+      />
+    </div>
+  );
+};
+
 const ExamSession: React.FC = () => {
   const { examId } = useParams<{ examId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [exam, setExam] = useState<Exam | null>(null);
-  const [questions, setQuestions] = useState<QuestionViewModel[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +114,21 @@ const ExamSession: React.FC = () => {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [isSubmittingOnLeave, setIsSubmittingOnLeave] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
-  const [timeLeftMs, setTimeLeftMs] = useState(0);
   const autoSubmitRef = useRef(false);
+
+  // ── Cached hooks: sessions + questions come from cache on repeat visits ──────────
+  const { data: studentSessions, loading: sessionsLoading } = useStudentSessions(user?.id);
+  const { data: rawQuestions, loading: questionsLoading } = useQuestions(examId);
+
+  const questions = useMemo(() =>
+    rawQuestions.map((q, index) => ({
+      id: String(q.id),
+      number: index + 1,
+      prompt: q.prompt,
+      marks: q.marks,
+    })),
+    [rawQuestions],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -57,19 +140,16 @@ const ExamSession: React.FC = () => {
         return;
       }
 
+      // Wait until cached sessions and questions are ready (avoids duplicate network calls)
+      if (sessionsLoading || questionsLoading) return;
+
       setLoading(true);
       setError(null);
 
       try {
-        const [loadedExam, loadedQuestions, studentSessions] = await Promise.all([
-          examApi.getExam(examId, controller.signal),
-          questionApi.getQuestions(examId, controller.signal),
-          sessionApi.getSessionsByStudent(user.id, { signal: controller.signal }),
-        ]);
+        const loadedExam = await examApi.getExam(examId, controller.signal);
 
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
 
         const existingSession = studentSessions.find(
           (candidate) => String(candidate.examId) === examId && !isSessionComplete(candidate),
@@ -80,21 +160,10 @@ const ExamSession: React.FC = () => {
           controller.signal,
         );
 
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
 
         setExam(loadedExam);
-        setQuestions(
-          loadedQuestions.map((question, index) => ({
-            id: String(question.id),
-            number: index + 1,
-            prompt: question.prompt,
-            marks: question.marks,
-          })),
-        );
         setSession(liveSession);
-        setTimeLeftMs(getSessionRemainingMs(liveSession));
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(extractErrorMessage(err, 'Failed to load this exam session.'));
@@ -109,29 +178,10 @@ const ExamSession: React.FC = () => {
     void loadSession();
 
     return () => controller.abort();
-  }, [examId, user]);
+  // sessionsLoading and questionsLoading are intentionally dependencies so we re-run once cached data arrives
+  }, [examId, questionsLoading, sessionsLoading, studentSessions, user]);
 
-  useEffect(() => {
-    if (!session?.expiresAt || isSessionComplete(session)) {
-      return undefined;
-    }
-
-    const interval = window.setInterval(() => {
-      const remaining = getSessionRemainingMs(session);
-      setTimeLeftMs(remaining);
-
-      if (remaining <= 0 && !autoSubmitRef.current) {
-        autoSubmitRef.current = true;
-        void sessionApi.submitSession(String(session.id))
-          .then(() => navigate('/student/results'))
-          .catch(() => {
-            setError('Your session reached its time limit and the auto-submit call failed. Please submit manually if the session is still open.');
-          });
-      }
-    }, 1000);
-
-    return () => window.clearInterval(interval);
-  }, [navigate, session]);
+  // The 1-second interval has been moved to <ExamTimer />
 
   useEffect(() => {
     const handleNavigationAttempt = (event: MouseEvent) => {
@@ -200,28 +250,11 @@ const ExamSession: React.FC = () => {
     }));
   };
 
+  // formatTime and getTimerColor were moved to ExamTimer
+
   const switchQuestion = (nextIndex: number) => {
     setCurrentIndex(nextIndex);
     setQueryError('');
-  };
-
-  const formatTime = (remainingMs: number) => {
-    const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const getTimerColor = () => {
-    if (timeLeftMs <= 5 * 60 * 1000) {
-      return '#e53e3e';
-    }
-    if (timeLeftMs <= 15 * 60 * 1000) {
-      return '#dd6b20';
-    }
-    return '#38a169';
   };
 
   const getResultTable = (feedback?: SubmissionFeedback) => {
@@ -361,9 +394,18 @@ const ExamSession: React.FC = () => {
           </div>
         </div>
         <div className="exam-header-right">
-          <div className="exam-timer" style={{ color: getTimerColor(), borderColor: getTimerColor() }}>
-            {formatTime(timeLeftMs)}
-          </div>
+          {session && (
+            <ExamTimer
+              session={session}
+              onExpire={() => {
+                if (autoSubmitRef.current) return;
+                autoSubmitRef.current = true;
+                void sessionApi.submitSession(String(session.id))
+                  .then(() => navigate('/student/results'))
+                  .catch(() => setError('Time limit reached but auto-submit failed. Please submit manually.'));
+              }}
+            />
+          )}
           <div className="exam-progress">
             <span className="exam-progress-text">{answeredCount}/{questions.length} drafted</span>
             <div className="exam-progress-bar">
@@ -413,20 +455,11 @@ const ExamSession: React.FC = () => {
                 </button>
               </div>
             </div>
-            <div className="exam-editor-area">
-              <div className="exam-editor-gutter">
-                {currentSql.split('\n').map((_, index) => (
-                  <div key={`line-${index}`} className="exam-line-num">{index + 1}</div>
-                ))}
-              </div>
-              <textarea
-                className="exam-textarea"
-                value={currentSql}
-                onChange={(event) => saveDraft(currentQuestion.id, event.target.value)}
-                placeholder="-- Write your SQL query here..."
-                spellCheck={false}
-              />
-            </div>
+            <ExamEditor
+              key={currentQuestion.id}
+              initialValue={currentSql}
+              onChange={(value) => saveDraft(currentQuestion.id, value)}
+            />
             {submittedQuestions.has(currentQuestion.id) && (
               <div className="exam-submitted-badge">Submission recorded for this question.</div>
             )}
