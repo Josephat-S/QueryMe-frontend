@@ -9,7 +9,7 @@ export const useExamDashboard = (examId?: string) => {
     refetch,
   } = useQuery({
     queryKey: ['exam-dashboard', examId],
-    queryFn: ({ signal }) => resultApi.getExamDashboard(examId!, { signal }),
+    queryFn: ({ signal }) => resultApi.getExamDashboard(examId!, { page: 1, pageSize: 2000, signal }),
     enabled: Boolean(examId),
     staleTime: 30_000,
   });
