@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { courseApi, examApi, resultApi, sessionApi, type StudentExamResult } from '../../api';
+import React, { useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
+import { examApi, resultApi, type StudentExamResult } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
-import { extractErrorMessage } from '../../utils/errorUtils';
 import { formatDateTime } from '../../utils/queryme';
+import { useStudentSessions } from '../../hooks/useStudentSessions';
 
 interface ResultRow {
   sessionId: string;
@@ -21,86 +22,61 @@ interface ResultRow {
 const MyResults: React.FC = () => {
   const { user } = useAuth();
   const [activeResult, setActiveResult] = useState<ResultRow | null>(null);
-  const [results, setResults] = useState<ResultRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  // \u2500\u2500 Cached sessions list (shared with StudentHome — no extra request if already cached) \u2500\u2500
+  const { data: sessions, loading: sessionsLoading, error: sessionsError } = useStudentSessions(user?.id);
 
-    const loadResults = async () => {
-      if (!user) {
-        setError('Please sign in to view your results.');
-        setLoading(false);
-        return;
-      }
+  // Top 15 sessions sorted newest-first
+  const sessionSlice = useMemo(() =>
+    [...sessions]
+      .sort((a, b) => new Date(b.submittedAt || b.startedAt || 0).getTime() - new Date(a.submittedAt || a.startedAt || 0).getTime())
+      .slice(0, 15),
+    [sessions],
+  );
 
-      setLoading(true);
-      setError(null);
-
-      try {
-        const [sessions, courses] = await Promise.all([
-          sessionApi.getSessionsByStudent(user.id, { page: 1, pageSize: 100, signal: controller.signal }),
-          courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal }).catch(() => []),
+  // Fetch exam + result for every session in parallel — each entry is cached individually
+  const detailQueries = useQueries({
+    queries: sessionSlice.map((session) => ({
+      queryKey: ['session-detail', String(session.id)],
+      queryFn: async ({ signal }: { signal?: AbortSignal }) => {
+        const [exam, result] = await Promise.all([
+          examApi.getExam(String(session.examId), signal).catch(() => null),
+          resultApi.getSessionResult(String(session.id), signal).catch(() => null as StudentExamResult | null),
         ]);
-        const courseNamesById = new Map(courses.map((course) => [String(course.id), course.name]));
+        return { session, exam, result };
+      },
+      staleTime: 60_000,
+      enabled: Boolean(session.id),
+    })),
+  });
 
-        const sessionSlice = sessions.slice(0, 15);
-        const rows: ResultRow[] = [];
-        const CHUNK_SIZE = 3;
+  const loading = sessionsLoading || detailQueries.some((q) => q.isLoading);
+  const error = sessionsError;
 
-        for (let i = 0; i < sessionSlice.length; i += CHUNK_SIZE) {
-          const chunk = sessionSlice.slice(i, i + CHUNK_SIZE);
-          if (controller.signal.aborted) break;
+  const results = useMemo<ResultRow[]>(() =>
+    detailQueries
+      .filter((q) => q.data)
+      .map(({ data }) => {
+        const { session, exam, result } = data!;
+        const courseNameFromExam = exam?.course?.name?.trim();
+        const courseNameFromCourseId = exam?.courseId ? String(exam.courseId) : undefined;
+        return {
+          sessionId: String(session.id),
+          examId: String(session.examId),
+          title: exam?.title || 'Exam',
+          course: courseNameFromExam || courseNameFromCourseId || 'Unknown Course',
+          submittedAt: session.submittedAt || session.startedAt || '',
+          visible: result?.visible ?? false,
+          totalScore: result?.totalScore ?? 0,
+          totalMaxScore: result?.totalMaxScore ?? 0,
+          visibilityMode: String(result?.visibilityMode || exam?.visibilityMode || 'N/A'),
+          questions: result?.questions || [],
+        } satisfies ResultRow;
+      })
+      .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()),
+    [detailQueries],
+  );
 
-          const chunkRows = await Promise.all(
-            chunk.map(async (session) => {
-              const [exam, sessionResult] = await Promise.all([
-                examApi.getExam(String(session.examId), controller.signal).catch(() => null),
-                resultApi.getSessionResult(String(session.id), controller.signal).catch(() => null),
-              ]);
-              const courseNameFromExam = exam?.course?.name?.trim();
-              const courseNameFromMap = exam?.courseId ? courseNamesById.get(String(exam.courseId)) : undefined;
-
-              return {
-                sessionId: String(session.id),
-                examId: String(session.examId),
-                title: exam?.title || 'Exam',
-                course: courseNameFromExam || courseNameFromMap || 'Unknown Course',
-                submittedAt: session.submittedAt || session.startedAt || '',
-                visible: sessionResult?.visible ?? false,
-                totalScore: sessionResult?.totalScore ?? 0,
-                totalMaxScore: sessionResult?.totalMaxScore ?? 0,
-                visibilityMode: String(sessionResult?.visibilityMode || exam?.visibilityMode || 'N/A'),
-                questions: sessionResult?.questions || [],
-              } satisfies ResultRow;
-            }),
-          );
-          rows.push(...chunkRows);
-        }
-
-        if (!controller.signal.aborted) {
-          setResults(
-            rows.sort(
-              (left, right) => new Date(right.submittedAt || 0).getTime() - new Date(left.submittedAt || 0).getTime(),
-            ),
-          );
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(extractErrorMessage(err, 'Failed to load your results.'));
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadResults();
-
-    return () => controller.abort();
-  }, [user]);
 
   const visibleResults = useMemo(
     () => results.filter((result) => result.visible && result.totalMaxScore > 0),
