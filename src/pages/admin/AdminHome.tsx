@@ -97,16 +97,16 @@ const AdminHome: React.FC = () => {
   });
 
   const error = loadError instanceof Error ? loadError.message : loadError ? String(loadError) : null;
-  const users = overviewData?.users || [];
-  const courses = overviewData?.courses || [];
-  const exams = overviewData?.exams || [];
+  const users = useMemo(() => overviewData?.users ?? [], [overviewData]);
+  const courses = useMemo(() => overviewData?.courses ?? [], [overviewData]);
+  const exams = useMemo(() => overviewData?.exams ?? [], [overviewData]);
   const loadingExams = loading;
 
   const roleCounts = useMemo(() => ({
     students: users.filter((user) => getPlatformUserRole(user) === 'STUDENT').length,
     teachers: users.filter((user) => getPlatformUserRole(user) === 'TEACHER').length,
     admins: users.filter((user) => getPlatformUserRole(user) === 'ADMIN').length,
-}), [users]);
+  }), [users]);
 
   const recentActivities = useMemo<AdminActivityRow[]>(() => {
     const items: AdminActivityRow[] = [];
