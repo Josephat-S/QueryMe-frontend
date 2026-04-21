@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+
 import type { Identifier, UserRegistrationPayload } from '../types/queryme';
 
 type StudentImportField = 'fullName' | 'email' | 'registrationNumber';
@@ -87,6 +87,8 @@ const validateStudentImportRow = (row: StudentImportRow): string[] => {
 };
 
 export const parseStudentImportFile = async (file: File): Promise<StudentImportRow[]> => {
+  const XLSX = await import('xlsx');
+
   const lowerName = file.name.toLowerCase();
 
   if (lowerName.endsWith('.pdf')) {

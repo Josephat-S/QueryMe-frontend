@@ -261,6 +261,12 @@ const ExamSession: React.FC = () => {
   }, [showLockdownModal, isFirstLockdown, triggerImmediateSubmission]);
 
   useEffect(() => {
+    if (lockdownWarningCount >= 3 && !autoSubmitRef.current) {
+      void triggerImmediateSubmission('exceeded full-screen exit limit (3 times)');
+    }
+  }, [lockdownWarningCount, triggerImmediateSubmission]);
+
+  useEffect(() => {
     if (loading || !session || isSessionComplete(session)) return undefined;
 
     const handleFullscreenChange = () => {
@@ -280,11 +286,9 @@ const ExamSession: React.FC = () => {
     const handleVisibilityChange = () => {
       if (document.hidden && !autoSubmitRef.current) {
         if (!isFirstLockdown) {
-          // If they leave, show a warning modal or confirm when they come back
-          // But the user wants to "ask them if they are sure"
-          const confirmLeave = window.confirm("Warning: Leaving this tab will submit your exam immediately. Do you want to stay?");
-          if (!confirmLeave) {
-            triggerImmediateSubmission('chose to leave the exam tab');
+          const confirmLeave = window.confirm("You are attempting to leave or switch away from the exam tab. Choose OK to submit immediately and leave, or Cancel to return and stay on this tab.");
+          if (confirmLeave) {
+            void triggerImmediateSubmission('chose to leave the exam tab');
           }
         }
       }
@@ -295,9 +299,9 @@ const ExamSession: React.FC = () => {
 
       setTimeout(() => {
         if (!document.hasFocus() && !autoSubmitRef.current) {
-          const confirmStay = window.confirm("SECURITY WARNING: Losing focus on the exam window is not allowed. Click 'OK' to stay or 'Cancel' to submit.");
-          if (!confirmStay) {
-            triggerImmediateSubmission('lost focus on the exam window');
+          const confirmStay = window.confirm("SECURITY WARNING: Losing focus on the exam window is not allowed. Choose OK to submit immediately, or Cancel to stay on the exam.");
+          if (confirmStay) {
+            void triggerImmediateSubmission('lost focus on the exam window');
           }
         }
       }, 500);
@@ -786,7 +790,7 @@ const ExamSession: React.FC = () => {
             <p className="mt-8 text-xs text-slate-400">
               {isFirstLockdown 
                 ? 'Your session will be monitored for suspicious activity.'
-                : lockdownWarningCount > 0 ? `Warnings recorded: ${lockdownWarningCount}` : 'Please return to full-screen to continue.'}
+                : lockdownWarningCount > 0 ? `Warning ${lockdownWarningCount} of 3. You will be automatically submitted if you exit full-screen 3 times.` : 'Please return to full-screen to continue.'}
             </p>
           </div>
         </div>
