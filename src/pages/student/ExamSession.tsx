@@ -23,10 +23,20 @@ interface SubmissionFeedback {
 
 // ── Isolated Timer Component to prevent full-page re-renders every second ──
 const ExamTimer: React.FC<{ session: Session; onExpire: () => void; isPaused: boolean }> = ({ session, onExpire, isPaused }) => {
-  const [timeLeftMs, setTimeLeftMs] = useState(() => getSessionRemainingMs(session));
+  // Clamp to 0 so a stale-but-not-submitted session with a past expiresAt
+  // does NOT produce a negative starting value that fires onExpire immediately.
+  const [timeLeftMs, setTimeLeftMs] = useState(() => Math.max(0, getSessionRemainingMs(session)));
 
   useEffect(() => {
     if (!session.expiresAt || isSessionComplete(session)) return undefined;
+
+    // If the session was already expired when this component mounted, fire
+    // onExpire on the next tick rather than letting the interval do it
+    // (prevents the 1-second delay from masking an already-expired session).
+    if (getSessionRemainingMs(session) <= 0) {
+      const t = window.setTimeout(() => onExpire(), 0);
+      return () => window.clearTimeout(t);
+    }
 
     const interval = window.setInterval(() => {
       if (isPaused) return;
@@ -169,7 +179,12 @@ const ExamSession: React.FC = () => {
         if (controller.signal.aborted) return;
 
         const existingSession = studentSessions.find(
-          (candidate) => String(candidate.examId) === examId && !isSessionComplete(candidate),
+          (candidate) =>
+            String(candidate.examId) === examId &&
+            !isSessionComplete(candidate) &&
+            // Exclude sessions whose time has already elapsed — reusing an expired
+            // session would cause ExamTimer to fire onExpire immediately on mount.
+            (!candidate.expiresAt || getSessionRemainingMs(candidate) > 0),
         );
 
         const liveSession = existingSession || await sessionApi.startSession(
