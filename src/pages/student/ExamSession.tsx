@@ -120,15 +120,18 @@ const ExamSession: React.FC = () => {
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   
-  // Lockdown states
-  const [showLockdownModal, setShowLockdownModal] = useState(false);
+  // Lockdown states — modal starts open so the student always sees instructions first.
+  const [showLockdownModal, setShowLockdownModal] = useState(true);
   const [isFirstLockdown, setIsFirstLockdown] = useState(true);
   const [lockdownCountdown, setLockdownCountdown] = useState(15);
   const [lockdownWarningCount, setLockdownWarningCount] = useState(0);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
   const autoSubmitRef = useRef(false);
   const heartbeatIntervalRef = useRef<number | null>(null);
+  // True only after the student has successfully entered fullscreen at least once.
+  // The countdown must NEVER fire before this is set.
+  const hasEnteredFullscreenRef = useRef(false);
 
   // ── Cached hooks: sessions + questions come from cache on repeat visits ──────────
   const { data: studentSessions, loading: sessionsLoading } = useStudentSessions(user?.id);
@@ -215,7 +218,9 @@ const ExamSession: React.FC = () => {
         } else if ((containerRef.current as unknown as { webkitRequestFullscreen?: () => Promise<void> }).webkitRequestFullscreen) {
           await (containerRef.current as unknown as { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen();
         }
-        setIsFirstLockdown(false);
+        // Do NOT set isFirstLockdown(false) here — the fullscreen promise resolving
+        // does NOT guarantee fullscreenchange has fired yet. We set it inside
+        // handleFullscreenChange when we confirm fullscreenElement is actually set.
       }
     } catch (err) {
       console.error('Fullscreen request failed:', err);
@@ -242,7 +247,10 @@ const ExamSession: React.FC = () => {
 
   // ── Separate useEffect for Countdown Timer ───────────────────────────────
   useEffect(() => {
-    if (!showLockdownModal || isFirstLockdown || autoSubmitRef.current) {
+    // Guard: only count down if the student has previously confirmed fullscreen entry.
+    // Without this guard, the countdown would start the moment isFirstLockdown becomes
+    // false — which could happen mid-entry before fullscreen is actually confirmed.
+    if (!showLockdownModal || !hasEnteredFullscreenRef.current || autoSubmitRef.current) {
       return undefined;
     }
 
@@ -258,7 +266,7 @@ const ExamSession: React.FC = () => {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [showLockdownModal, isFirstLockdown, triggerImmediateSubmission]);
+  }, [showLockdownModal, triggerImmediateSubmission]);
 
   useEffect(() => {
     if (lockdownWarningCount >= 3 && !autoSubmitRef.current) {
@@ -271,35 +279,38 @@ const ExamSession: React.FC = () => {
 
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = Boolean(document.fullscreenElement);
-      
-      if (!isCurrentlyFullscreen && !autoSubmitRef.current) {
-        setShowLockdownModal(true);
-        if (!isFirstLockdown) {
-          setLockdownCountdown(15);
-          setLockdownWarningCount(prev => prev + 1);
-        }
-      } else {
+
+      if (isCurrentlyFullscreen) {
+        // Student successfully entered fullscreen — mark as confirmed and clear modal.
+        hasEnteredFullscreenRef.current = true;
+        setIsFirstLockdown(false);
         setShowLockdownModal(false);
+      } else if (!autoSubmitRef.current) {
+        // Student exited fullscreen — show re-entry modal and start countdown
+        // only if they had previously confirmed fullscreen entry.
+        setShowLockdownModal(true);
+        if (hasEnteredFullscreenRef.current) {
+          setLockdownCountdown(15);
+          setLockdownWarningCount((prev) => prev + 1);
+        }
       }
     };
 
     const handleVisibilityChange = () => {
-      if (document.hidden && !autoSubmitRef.current) {
-        if (!isFirstLockdown) {
-          const confirmLeave = window.confirm("You are attempting to leave or switch away from the exam tab. Choose OK to submit immediately and leave, or Cancel to return and stay on this tab.");
-          if (confirmLeave) {
-            void triggerImmediateSubmission('chose to leave the exam tab');
-          }
+      if (document.hidden && !autoSubmitRef.current && hasEnteredFullscreenRef.current) {
+        const confirmLeave = window.confirm('You are attempting to leave or switch away from the exam tab. Choose OK to submit immediately and leave, or Cancel to return and stay on this tab.');
+        if (confirmLeave) {
+          void triggerImmediateSubmission('chose to leave the exam tab');
         }
       }
     };
 
     const handleBlur = () => {
-      if (autoSubmitRef.current || isFirstLockdown) return;
+      if (autoSubmitRef.current || !hasEnteredFullscreenRef.current) return;
 
       setTimeout(() => {
         if (!document.hasFocus() && !autoSubmitRef.current) {
-          const confirmStay = window.confirm("SECURITY WARNING: Losing focus on the exam window is not allowed. Choose OK to submit immediately, or Cancel to stay on the exam.");
+          const confirmStay = window.confirm('SECURITY WARNING: Losing focus on the exam window is not allowed. Choose OK to submit immediately, or Cancel to stay on the exam.');
           if (confirmStay) {
             void triggerImmediateSubmission('lost focus on the exam window');
           }
@@ -321,21 +332,18 @@ const ExamSession: React.FC = () => {
     window.addEventListener('blur', handleBlur);
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Initial check
-    let initialCheckTimer: number | undefined;
-    if (!document.fullscreenElement) {
-      initialCheckTimer = window.setTimeout(() => setShowLockdownModal(true), 0);
-    }
+    // The modal is initialised to true in useState, so no synchronous
+    // setState is needed here. It will be dismissed by handleFullscreenChange
+    // once the student successfully enters fullscreen.
 
     return () => {
-      if (initialCheckTimer) window.clearTimeout(initialCheckTimer);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [loading, session, isFirstLockdown, triggerImmediateSubmission]);
+  }, [loading, session, triggerImmediateSubmission]);
 
   // Heartbeat and Focus Locking
   useEffect(() => {
