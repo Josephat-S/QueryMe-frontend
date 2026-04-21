@@ -71,6 +71,20 @@ export const userApi = {
     return page.content;
   },
 
+  /** Returns ALL registered students regardless of course assignment (for enrollment pickers). */
+  async getAllStudentsPage(params?: PaginationParams): Promise<PaginatedResponse<PlatformUser>> {
+    const response = await axiosInstance.get('/students/all', {
+      params: toBackendPaginationParams(params),
+      signal: params?.signal,
+    });
+    return unwrapPaginatedResponse<PlatformUser>(response);
+  },
+
+  async getAllStudents(params?: PaginationParams): Promise<PlatformUser[]> {
+    const page = await this.getAllStudentsPage(params);
+    return page.content;
+  },
+
   async getStudent(id: string, signal?: AbortSignal): Promise<PlatformUser> {
     const response = await axiosInstance.get<PlatformUser>(`/students/${id}`, { signal });
     return unwrapResponse(response);

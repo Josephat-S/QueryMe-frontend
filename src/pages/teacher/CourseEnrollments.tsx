@@ -17,6 +17,7 @@ import {
 } from '../../utils/studentImport';
 import { useTeacherCourses } from '../../hooks/useTeacherCourses';
 import { useStudents } from '../../hooks/useStudents';
+import { useAllStudents } from '../../hooks/useAllStudents';
 import { useEnrollments } from '../../hooks/useEnrollments';
 import { useEnrollmentsByCourse } from '../../hooks/useEnrollmentsByCourse';
 import { useClassGroupsByCourse } from '../../hooks/useClassGroupsByCourse';
@@ -244,10 +245,15 @@ const CourseEnrollments: React.FC = () => {
   // ── Cached data via hooks ────────────────────────────────────────────────
   const { data: courses } = useTeacherCourses(user?.id);
   const { data: students, loading: studentsLoading } = useStudents();
+  // All registered students — used by the enrollment picker regardless of course assignment
+  const { data: allStudents, loading: allStudentsLoading } = useAllStudents();
   const { data: allEnrollments } = useEnrollments();
 
   const [selectedCourseId, setSelectedCourseId] = useState('');
-  const [selectedStudentId, setSelectedStudentId] = useState('');
+  // Multi-select enrollment: set of student IDs selected for enrollment
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(() => new Set());
+  // Search filter for the enrollment picker
+  const [enrollSearch, setEnrollSearch] = useState('');
   const [singleForm, setSingleForm] = useState<SingleStudentFormState>({
     fullName: '',
     email: '',
@@ -265,6 +271,7 @@ const CourseEnrollments: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [enrollmentSaving, setEnrollmentSaving] = useState(false);
+  const [enrollProgress, setEnrollProgress] = useState<{ current: number; total: number } | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -296,13 +303,14 @@ const CourseEnrollments: React.FC = () => {
 
   // Override loading to false once students are available
   useEffect(() => {
-    if (!studentsLoading) setLoading(false);
-  }, [studentsLoading]);
+    if (!studentsLoading && !allStudentsLoading) setLoading(false);
+  }, [studentsLoading, allStudentsLoading]);
 
   const refreshMembershipState = useCallback(async () => {
     // Invalidate caches so React Query refetches the changed data
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['students'] }),
+      queryClient.invalidateQueries({ queryKey: ['all-students'] }),
       queryClient.invalidateQueries({ queryKey: ['enrollments'] }),
       queryClient.invalidateQueries({ queryKey: ['enrollments-by-course', selectedCourseId] }),
       queryClient.invalidateQueries({ queryKey: ['class-groups-by-course', selectedCourseId] }),
@@ -371,11 +379,17 @@ const CourseEnrollments: React.FC = () => {
   );
 
   const availableStudents = useMemo(
-    () => [...students]
+    () => [...allStudents]
       .filter((student) => !enrolledStudentIds.has(String(student.id)))
       .sort((left, right) => getStudentEnrollmentLabel(left).localeCompare(getStudentEnrollmentLabel(right))),
-    [enrolledStudentIds, students],
+    [enrolledStudentIds, allStudents],
   );
+
+  const filteredAvailableStudents = useMemo(() => {
+    const q = enrollSearch.toLowerCase();
+    if (!q) return availableStudents;
+    return availableStudents.filter((s) => getStudentEnrollmentLabel(s).toLowerCase().includes(q));
+  }, [availableStudents, enrollSearch]);
 
   const validBulkRows = useMemo(
     () => bulkRows.filter((row) => row.errors.length === 0),
@@ -439,33 +453,46 @@ const CourseEnrollments: React.FC = () => {
   };
 
   const handleEnroll = async () => {
-    if (!selectedCourseId || !selectedStudentId) {
-      return;
-    }
+    if (!selectedCourseId || selectedStudentIds.size === 0) return;
 
     setEnrollmentSaving(true);
+    setEnrollProgress({ current: 0, total: selectedStudentIds.size });
     setError(null);
 
-    try {
-      await courseApi.createEnrollment({ courseId: selectedCourseId, studentId: selectedStudentId });
-      await refreshMembershipState();
-      setSelectedStudentId('');
-      showToast('success', 'Student enrolled', 'The selected student was added to the course.');
-    } catch (err) {
-      if (isNullParseEnrollmentError(err)) {
-        try {
-          await userApi.updateStudent(selectedStudentId, { courseId: selectedCourseId });
-          await refreshMembershipState();
-          setSelectedStudentId('');
-          showToast('success', 'Student assigned', 'The enrollment endpoint rejected the request, so the student was linked through the student profile API instead.');
-        } catch (fallbackErr) {
-          setError(extractErrorMessage(fallbackErr, 'Failed to assign the selected student to the course.'));
+    const ids = [...selectedStudentIds];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < ids.length; i++) {
+      const studentId = ids[i];
+      try {
+        await courseApi.createEnrollment({ courseId: selectedCourseId, studentId });
+        succeeded++;
+      } catch (err) {
+        if (isNullParseEnrollmentError(err)) {
+          try {
+            await userApi.updateStudent(studentId, { courseId: selectedCourseId });
+            succeeded++;
+          } catch {
+            failed++;
+          }
+        } else {
+          failed++;
         }
-      } else {
-        setError(extractErrorMessage(err, 'Failed to enroll the selected student.'));
       }
-    } finally {
-      setEnrollmentSaving(false);
+      setEnrollProgress({ current: i + 1, total: ids.length });
+    }
+
+    await refreshMembershipState();
+    setSelectedStudentIds(new Set());
+    setEnrollSearch('');
+    setEnrollProgress(null);
+    setEnrollmentSaving(false);
+
+    if (failed === 0) {
+      showToast('success', `${succeeded} student${succeeded !== 1 ? 's' : ''} enrolled`, `Successfully enrolled into ${selectedCourse?.name ?? 'the course'}.`);
+    } else {
+      showToast('warning', 'Partial enrollment', `${succeeded} enrolled, ${failed} failed. Check the error log for details.`);
     }
   };
 
@@ -731,39 +758,129 @@ const CourseEnrollments: React.FC = () => {
             </div>
 
             <div className="course-form-field">
-              <label className="course-form-label" htmlFor="teacher-existing-student">Enroll Existing Student</label>
-              <select
-                id="teacher-existing-student"
+              <label className="course-form-label">Enroll Existing Students</label>
+
+              {/* Search filter for the picker */}
+              <input
+                id="teacher-enroll-search"
+                type="text"
                 className="form-input"
-                value={selectedStudentId}
-                onChange={(event) => setSelectedStudentId(event.target.value)}
-                disabled={!selectedCourseId}
-              >
-                <option value="">{selectedCourseId ? 'Select student to enroll' : 'Pick a course first'}</option>
-                {availableStudents.map((student) => (
-                  <option key={String(student.id)} value={String(student.id)}>
-                    {getStudentEnrollmentLabel(student)}
-                  </option>
-                ))}
-              </select>
+                placeholder={selectedCourseId ? `Search ${availableStudents.length} available students...` : 'Pick a course first'}
+                value={enrollSearch}
+                onChange={(e) => setEnrollSearch(e.target.value)}
+                disabled={!selectedCourseId || enrollmentSaving}
+                style={{ marginBottom: '8px' }}
+              />
+
+              {/* Multi-select checklist */}
+              {selectedCourseId && (
+                <div
+                  style={{
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    background: isDarkMode ? '#0f172a' : '#f9fafb',
+                  }}
+                >
+                  {filteredAvailableStudents.length === 0 ? (
+                    <div style={{ padding: '16px', fontSize: '13px', color: isDarkMode ? '#64748b' : '#94a3b8', textAlign: 'center' }}>
+                      {availableStudents.length === 0
+                        ? 'All registered students are already enrolled in this course.'
+                        : 'No students match your search.'}
+                    </div>
+                  ) : (
+                    filteredAvailableStudents.map((student) => {
+                      const sid = String(student.id);
+                      const checked = selectedStudentIds.has(sid);
+                      return (
+                        <label
+                          key={sid}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '9px 14px',
+                            cursor: enrollmentSaving ? 'not-allowed' : 'pointer',
+                            borderBottom: isDarkMode ? '1px solid #1e293b' : '1px solid #f1f5f9',
+                            background: checked ? (isDarkMode ? 'rgba(16,185,129,0.12)' : '#ecfdf5') : 'transparent',
+                            transition: 'background 0.15s',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={enrollmentSaving}
+                            onChange={() => {
+                              setSelectedStudentIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(sid)) next.delete(sid); else next.add(sid);
+                                return next;
+                              });
+                            }}
+                            style={{ accentColor: '#10b981', width: '16px', height: '16px', flexShrink: 0 }}
+                          />
+                          <span style={{ fontSize: '13px', color: isDarkMode ? '#e2e8f0' : '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {getStudentEnrollmentLabel(student)}
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Select / deselect all toggle */}
+              {selectedCourseId && filteredAvailableStudents.length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                  <span style={{ fontSize: '12px', color: isDarkMode ? '#64748b' : '#94a3b8' }}>
+                    {selectedStudentIds.size} selected
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '11px', padding: '3px 10px' }}
+                    disabled={enrollmentSaving}
+                    onClick={() => {
+                      const allIds = new Set(filteredAvailableStudents.map((s) => String(s.id)));
+                      const allSelected = filteredAvailableStudents.every((s) => selectedStudentIds.has(String(s.id)));
+                      setSelectedStudentIds((prev) => {
+                        const next = new Set(prev);
+                        if (allSelected) {
+                          allIds.forEach((id) => next.delete(id));
+                        } else {
+                          allIds.forEach((id) => next.add(id));
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    {filteredAvailableStudents.every((s) => selectedStudentIds.has(String(s.id))) ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {user?.role === 'ADMIN' && (
-              <button
-                className="btn btn-primary"
-                type="button"
-                onClick={() => void handleEnroll()}
-                disabled={!selectedCourseId || !selectedStudentId || enrollmentSaving}
-                style={{ width: '100%' }}
-              >
-                {enrollmentSaving ? 'Saving...' : 'Enroll Existing Student'}
-              </button>
-            )}
-            {user?.role !== 'ADMIN' && (
-              <div className="course-helper-box" style={{ background: isDarkMode ? '#1e293b' : '#f1f5f9', borderColor: isDarkMode ? '#334155' : '#e2e8f0', color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                Existing student enrollment is restricted to system administrators. Contact an admin to add students to your courses.
+            {/* Enroll button — available to both TEACHER and ADMIN */}
+            {enrollProgress && (
+              <div style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', textAlign: 'center' }}>
+                Enrolling {enrollProgress.current} / {enrollProgress.total}...
               </div>
             )}
+            <button
+              className="btn btn-primary"
+              type="button"
+              id="teacher-enroll-btn"
+              onClick={() => void handleEnroll()}
+              disabled={!selectedCourseId || selectedStudentIds.size === 0 || enrollmentSaving}
+              style={{ width: '100%' }}
+            >
+              {enrollmentSaving
+                ? `Enrolling ${enrollProgress ? `${enrollProgress.current}/${enrollProgress.total}` : '...'}` 
+                : selectedStudentIds.size > 1
+                ? `Enroll ${selectedStudentIds.size} Students`
+                : 'Enroll Student'}
+            </button>
           </div>
         </div>
 
