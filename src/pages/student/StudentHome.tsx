@@ -13,6 +13,7 @@ import {
 } from '../../utils/queryme';
 import { usePublishedExams } from '../../hooks/usePublishedExams';
 import { useStudentSessions } from '../../hooks/useStudentSessions';
+import { useAdditionalAttempts } from '../../hooks/useAdditionalAttempts';
 
 interface UpcomingExamItem {
   id: string;
@@ -41,13 +42,16 @@ interface RecentResultItem {
 const StudentHome: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [pendingStartExam, setPendingStartExam] = useState<Pick<UpcomingExamItem, 'id' | 'title' | 'duration'> | null>(null);
+  const [pendingStartExam, setPendingStartExam] = useState<Pick<UpcomingExamItem, 'id' | 'title' | 'duration' | 'actionState'> | null>(null);
 
   // ── Cached hooks (no manual useEffect needed) ────────────────────────
   const { data: publishedExams, loading: examsLoading, error: examsError } = usePublishedExams();
   const { data: sessions, loading: sessionsLoading, error: sessionsError } = useStudentSessions(user?.id);
 
-  const loading = examsLoading || sessionsLoading;
+  const examIds = useMemo(() => (publishedExams as Exam[]).map(e => String(e.id)), [publishedExams]);
+  const { data: additionalAttempts, isLoading: additionalLoading } = useAdditionalAttempts(user?.id, examIds);
+
+  const loading = examsLoading || sessionsLoading || additionalLoading;
   const error = examsError || sessionsError;
 
   // Recent sessions — top 4, sorted by latest
@@ -57,6 +61,8 @@ const StudentHome: React.FC = () => {
       .sort((a, b) => new Date(b.submittedAt || b.startedAt || 0).getTime() - new Date(a.submittedAt || a.startedAt || 0).getTime())
       .slice(0, 4)
   ), [sessions]);
+
+  const activeSession = useMemo(() => sessions.find(s => !isSessionComplete(s)), [sessions]);
 
   // Fetch results for each recent session in parallel — each is cached individually
   const resultQueries = useQueries({
@@ -87,7 +93,9 @@ const StudentHome: React.FC = () => {
     (publishedExams as Exam[]).map((exam) => {
       const examId = String(exam.id);
       const attemptsUsed = completedAttemptsByExam[examId] || 0;
-      const maxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
+      const baseMaxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
+      const bonusAttempts = additionalAttempts[examId] || 0;
+      const maxAttempts = baseMaxAttempts + bonusAttempts;
       const status = normalizeExamStatus(exam.status);
       let actionLabel: string;
       let actionDisabled: boolean;
@@ -111,13 +119,13 @@ const StudentHome: React.FC = () => {
       return {
         id: examId,
         title: exam.title,
-        course: getCourseName(exam.course, exam.courseId),
+        course: exam.courseName || getCourseName(exam.course, exam.courseId),
         duration: getExamTimeLimit(exam) ? `${getExamTimeLimit(exam)} min` : 'No limit',
         visibilityMode: String(exam.visibilityMode || 'N/A'),
         actionLabel, actionDisabled, actionState, attemptsSummary,
       };
     })
-  ), [completedAttemptsByExam, publishedExams]);
+  ), [completedAttemptsByExam, publishedExams, additionalAttempts]);
 
   const recentResults = useMemo<RecentResultItem[]>(() => (
     recentSessions.map((session, index) => {
@@ -134,7 +142,7 @@ const StudentHome: React.FC = () => {
         sessionId: String(session.id),
         examId: String(session.examId),
         title: exam?.title || 'Exam',
-        course: getCourseName(exam?.course, exam?.courseId),
+        course: exam?.courseName || getCourseName(exam?.course, exam?.courseId),
         submittedAt: session.submittedAt || session.startedAt || '',
         score, total, visible, statusLabel,
       };
@@ -200,11 +208,12 @@ const StudentHome: React.FC = () => {
   };
 
   const handleExamAction = (exam: UpcomingExamItem) => {
-    if (exam.actionState === 'START') {
+    if (exam.actionState === 'START' || exam.actionState === 'REATTEMPT') {
       setPendingStartExam({
         id: exam.id,
         title: exam.title,
         duration: exam.duration,
+        actionState: exam.actionState,
       });
       return;
     }
@@ -233,6 +242,21 @@ const StudentHome: React.FC = () => {
       <div className="mb-5">
         <h1 className="m-0 text-3xl font-semibold tracking-tight text-slate-800">{getGreeting()}, {user?.name?.split(' ')[0] || 'Student'}</h1>
       </div>
+
+      {activeSession && (
+        <div className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 p-5 shadow-lg text-white flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold">Session in Progress</h3>
+            <p className="text-sm opacity-90">You have an active exam session for "{publishedExamById.get(String(activeSession.examId))?.title || 'an exam'}". Click resume to continue.</p>
+          </div>
+          <button 
+            className="whitespace-nowrap px-6 py-2 bg-white text-violet-600 rounded-xl font-bold hover:bg-slate-50 transition"
+            onClick={() => navigate(`/student/exam-session/${activeSession.examId}`)}
+          >
+            Resume Session
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -415,7 +439,7 @@ const StudentHome: React.FC = () => {
                 ?
               </div>
               <h3 id="start-exam-title" style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>
-                Ready to begin?
+                {pendingStartExam.actionState === 'REATTEMPT' ? 'Ready to re-attempt?' : 'Ready to begin?'}
               </h3>
               <p id="start-exam-description" style={{ margin: 0, fontSize: '15px', color: '#64748b', lineHeight: 1.6 }}>
                 You're about to start <strong>{pendingStartExam.title}</strong>

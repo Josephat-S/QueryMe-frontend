@@ -103,6 +103,7 @@ export const toAuthSessionUser = (response: AuthResponse, email: string): AuthSe
     email: backendUser.email || email,
     name: getUserDisplayName(backendUser),
     role: getPlatformUserRole(backendUser),
+    registrationNumber: backendUser.registrationNumber || backendUser.studentNumber || backendUser.student_number,
   };
 };
 
@@ -131,7 +132,7 @@ export const getCourseName = (course?: Partial<Course> | null, fallbackId?: Iden
     return course.name;
   }
 
-  return fallbackId ? 'Course' : 'Unknown Course';
+  return fallbackId ? `Course ${fallbackId}` : 'Unknown Course';
 };
 
 export const filterCoursesByTeacher = (courses: Course[], teacherId?: string | null): Course[] => {

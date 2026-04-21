@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { examApi, resultApi, type StudentExamResult } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { formatDateTime } from '../../utils/queryme';
 import { useStudentSessions } from '../../hooks/useStudentSessions';
+import { useCourses } from '../../hooks/useCourses';
 
 interface ResultRow {
   sessionId: string;
@@ -17,14 +19,27 @@ interface ResultRow {
   totalMaxScore: number;
   visibilityMode: string;
   questions: NonNullable<StudentExamResult['questions']>;
+  teacherFeedback?: string;
 }
 
 const MyResults: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [activeResult, setActiveResult] = useState<ResultRow | null>(null);
+  
+  const autoSubmitMessage = location.state?.message as string | undefined;
 
-  // \u2500\u2500 Cached sessions list (shared with StudentHome — no extra request if already cached) \u2500\u2500
+  // \u2500\u2500 Cached sessions list (shared with StudentHome \u2014 no extra request if already cached) \u2500\u2500
   const { data: sessions, loading: sessionsLoading, error: sessionsError } = useStudentSessions(user?.id);
+  const { data: allCourses } = useCourses();
+
+  const courseMap = useMemo(() => {
+    const map = new Map<string, string>();
+    allCourses.forEach((c) => {
+      if (c.id && c.name) map.set(String(c.id), c.name);
+    });
+    return map;
+  }, [allCourses]);
 
   // Top 15 sessions sorted newest-first
   const sessionSlice = useMemo(() =>
@@ -58,23 +73,24 @@ const MyResults: React.FC = () => {
       .filter((q) => q.data)
       .map(({ data }) => {
         const { session, exam, result } = data!;
-        const courseNameFromExam = exam?.course?.name?.trim();
-        const courseNameFromCourseId = exam?.courseId ? String(exam.courseId) : undefined;
+        const courseNameFromExam = exam?.courseName || exam?.course?.name?.trim();
+        const courseNameFromMap = exam?.courseId ? courseMap.get(String(exam.courseId)) : undefined;
         return {
           sessionId: String(session.id),
           examId: String(session.examId),
-          title: exam?.title || 'Exam',
-          course: courseNameFromExam || courseNameFromCourseId || 'Unknown Course',
+          title: result?.examTitle || exam?.title || 'Exam',
+          course: result?.courseName || courseNameFromExam || courseNameFromMap || (exam?.courseId ? `Course ${exam.courseId}` : 'Unknown Course'),
           submittedAt: session.submittedAt || session.startedAt || '',
           visible: result?.visible ?? false,
           totalScore: result?.totalScore ?? 0,
           totalMaxScore: result?.totalMaxScore ?? 0,
           visibilityMode: String(result?.visibilityMode || exam?.visibilityMode || 'N/A'),
           questions: result?.questions || [],
+          teacherFeedback: result?.teacherFeedback || session.teacherFeedback || '',
         } satisfies ResultRow;
       })
       .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()),
-    [detailQueries],
+    [detailQueries, courseMap],
   );
 
 
@@ -92,6 +108,90 @@ const MyResults: React.FC = () => {
       visibleResults.reduce((sum, result) => sum + (result.totalScore / result.totalMaxScore) * 100, 0) / visibleResults.length,
     );
   }, [visibleResults]);
+
+  const handleExport = async (result: ResultRow) => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+      const timestamp = formatDateTime(result.submittedAt);
+      const studentName = user?.name || user?.email || 'Student';
+
+      // Header
+      doc.setFontSize(22);
+      doc.setTextColor(40, 40, 40);
+      doc.text('Exam Results Report', 14, 22);
+      
+      doc.setFontSize(12);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+
+      // Exam Info Card
+      doc.setDrawColor(230, 230, 230);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(14, 38, 182, 45, 3, 3, 'FD');
+
+      doc.setFontSize(11);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Exam Title:', 20, 48);
+      doc.text('Student:', 20, 56);
+      doc.text('Course:', 20, 64);
+      doc.text('Date Submitted:', 20, 72);
+      doc.text('Total Score:', 20, 80);
+
+      doc.setTextColor(30, 30, 30);
+      doc.setFont('helvetica', 'bold');
+      doc.text(result.title, 60, 48);
+      doc.text(studentName, 60, 56);
+      doc.text(result.course, 60, 64);
+      doc.text(timestamp, 60, 72);
+      doc.text(`${result.totalScore} / ${result.totalMaxScore}`, 60, 80);
+
+      // Question Breakdown Table
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(14);
+      doc.setTextColor(40, 40, 40);
+      doc.text('Question Breakdown', 14, 100);
+
+      const tableData = result.questions.map((q, index) => [
+        `Q${index + 1}`,
+        q.prompt || 'N/A',
+        q.submittedQuery?.trim() || 'No answer submitted.',
+        `${q.score ?? 0} / ${q.maxScore ?? 0}`
+      ]);
+
+      autoTable(doc, {
+        startY: 105,
+        head: [['#', 'Question', 'Your Answer', 'Marks']],
+        body: tableData,
+        headStyles: { fillColor: [106, 60, 176], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 60 },
+          2: { cellWidth: 80 },
+          3: { cellWidth: 30, halign: 'center' }
+        },
+        styles: { fontSize: 9, cellPadding: 5, overflow: 'linebreak' },
+        margin: { top: 105 }
+      });
+
+      // Footer
+      const pageCount = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`QueryMe Platform - Page ${i} of ${pageCount}`, (doc as unknown as { internal: { pageSize: { width: number } } }).internal.pageSize.width / 2, (doc as unknown as { internal: { pageSize: { height: number } } }).internal.pageSize.height - 10, { align: 'center' });
+      }
+
+      doc.save(`Result_${result.title.replace(/\s+/g, '_')}.pdf`);
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      alert('Failed to generate PDF. Please try again later.');
+    }
+  };
 
   if (loading) {
     return <PageSkeleton title="My Results" rows={6} />;
@@ -115,6 +215,22 @@ const MyResults: React.FC = () => {
         <h1>My Results</h1>
         <p>Only the results the backend marks as visible are shown in detail.</p>
       </div>
+
+      {autoSubmitMessage && (
+        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-800 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">Lockdown Violation Detected</h3>
+              <p className="mt-1 text-sm font-medium opacity-90">{autoSubmitMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="stat-grid" style={{ marginBottom: '24px' }}>
         <div className="stat-card">
@@ -164,26 +280,35 @@ const MyResults: React.FC = () => {
                     </td>
                     <td>
                       {result.visible ? (
-                        <button
-                          type="button"
-                          aria-label={`View score details for ${result.title}`}
-                          onClick={() => setActiveResult(result)}
-                          style={{
-                            minWidth: '110px',
-                            justifyContent: 'center',
-                            padding: '6px 12px',
-                            borderRadius: '999px',
-                            border: '1px solid #c4b5fd',
-                            background: '#f5f3ff',
-                            color: '#6a3cb0',
-                            fontWeight: 700,
-                            textDecoration: 'underline',
-                            cursor: 'pointer',
-                            fontFamily: 'inherit',
-                          }}
-                        >
-                          View {result.totalScore}/{result.totalMaxScore}
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            aria-label={`View score details for ${result.title}`}
+                            onClick={() => setActiveResult(result)}
+                            style={{
+                              minWidth: '110px',
+                              justifyContent: 'center',
+                              padding: '6px 12px',
+                              borderRadius: '999px',
+                              border: '1px solid #c4b5fd',
+                              background: '#f5f3ff',
+                              color: '#6a3cb0',
+                              fontWeight: 700,
+                              textDecoration: 'underline',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            View {result.totalScore}/{result.totalMaxScore}
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"
+                            onClick={() => void handleExport(result)}
+                          >
+                            Export PDF
+                          </button>
+                        </div>
                       ) : (
                         <span style={{ color: '#888' }}>Awaiting release</span>
                       )}
@@ -212,14 +337,23 @@ const MyResults: React.FC = () => {
               </div>
               <div className="mt-3">
                 {result.visible ? (
-                  <button
-                    type="button"
-                    aria-label={`View score details for ${result.title}`}
-                    onClick={() => setActiveResult(result)}
-                    className="inline-flex w-full items-center justify-center rounded-full border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-700 underline"
-                  >
-                    View {result.totalScore}/{result.totalMaxScore}
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      aria-label={`View score details for ${result.title}`}
+                      onClick={() => setActiveResult(result)}
+                      className="inline-flex w-full items-center justify-center rounded-full border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-700 underline"
+                    >
+                      View {result.totalScore}/{result.totalMaxScore}
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex w-full items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700"
+                      onClick={() => void handleExport(result)}
+                    >
+                      Export PDF
+                    </button>
+                  </div>
                 ) : (
                   <span className="text-sm text-slate-500">Awaiting release</span>
                 )}
@@ -289,8 +423,8 @@ const MyResults: React.FC = () => {
                       </div>
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span className="badge badge-gray">Scored: {question.score ?? 0}/{question.maxScore ?? 0}</span>
-                        <span className={`badge ${question.isCorrect ? 'badge-green' : 'badge-orange'}`}>
-                          {question.isCorrect ? 'Correct' : 'Reviewed'}
+                        <span className={`badge ${question.isCorrect ? 'badge-green' : 'badge-red'}`}>
+                          {question.isCorrect ? 'Correct' : 'Incorrect'}
                         </span>
                       </div>
                     </div>
@@ -298,6 +432,20 @@ const MyResults: React.FC = () => {
                 </div>
               ) : (
                 <div className="marks-modal-empty">No question breakdown was returned for this session.</div>
+              )}
+
+              {activeResult.teacherFeedback && (
+                <div className="marks-modal-feedback" style={{ marginTop: '24px', padding: '16px', borderRadius: '12px', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0369a1', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Teacher Feedback
+                  </h3>
+                  <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#0c4a6e', margin: 0, whiteSpace: 'pre-wrap' }}>
+                    {activeResult.teacherFeedback}
+                  </p>
+                </div>
               )}
             </div>
           </div>

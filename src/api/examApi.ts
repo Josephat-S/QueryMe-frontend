@@ -74,4 +74,21 @@ export const examApi = {
     });
     return unwrapResponse(response);
   },
+
+  async cloneExam(examId: string, signal?: AbortSignal): Promise<Exam> {
+    const response = await axiosInstance.post<Exam>(`/exams/${examId}/clone`, undefined, { signal });
+    return unwrapResponse(response);
+  },
+
+  async grantAdditionalAttempt(examId: string, studentId: string, count = 1, signal?: AbortSignal): Promise<void> {
+    await axiosInstance.post(`/exams/${examId}/students/${studentId}/additional-attempts`, undefined, {
+      params: { count },
+      signal,
+    });
+  },
+
+  async getAdditionalAttempts(examId: string, studentId: string, signal?: AbortSignal): Promise<number> {
+    const response = await axiosInstance.get<number>(`/exams/${examId}/students/${studentId}/additional-attempts`, { signal });
+    return unwrapResponse(response);
+  },
 };

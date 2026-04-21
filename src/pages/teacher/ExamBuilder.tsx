@@ -349,8 +349,8 @@ const ExamBuilder: React.FC = () => {
   };
 
   const handleSaveDraft = async () => {
-    if (readOnly) {
-      showToast('warning', 'Exam locked', 'Only draft exams can be edited from this builder.');
+    if (examStatus === 'CLOSED') {
+      showToast('warning', 'Exam locked', 'Closed exams cannot be edited.');
       return;
     }
 
@@ -361,7 +361,7 @@ const ExamBuilder: React.FC = () => {
       const { wasCreated, wasReused } = await persistDraft(false);
       showToast(
         'success',
-        wasCreated ? 'Draft created' : wasReused ? 'Draft reopened' : 'Draft updated',
+        wasCreated ? 'Draft created' : wasReused ? 'Draft reopened' : 'Settings updated',
         wasCreated
           ? 'The exam draft was created. You can now add questions and publish later.'
           : wasReused
@@ -457,8 +457,8 @@ const ExamBuilder: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => navigate('/teacher/exams')}>Cancel</button>
-          <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || readOnly}>
-            {saving ? saveProgress || 'Saving...' : 'Save Draft'}
+          <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || examStatus === 'CLOSED'}>
+            {saving ? saveProgress || 'Saving...' : (examStatus === 'DRAFT' || !examId ? 'Save Draft' : 'Update Settings')}
           </button>
           <button className="btn btn-secondary" onClick={() => void handleSaveQuestions()} disabled={saving || readOnly || !activeExamId}>
             {saving ? saveProgress || 'Saving...' : 'Save Questions'}
@@ -477,8 +477,8 @@ const ExamBuilder: React.FC = () => {
           </div>
         )}
         {readOnly && (
-          <div style={{ color: '#dd6b20', fontSize: '13px' }}>
-            This exam is no longer in draft status. The backend only allows updates to draft exams, so the form is read-only.
+          <div style={{ color: '#2563eb', fontSize: '13px', background: '#f0f7ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+            <strong>Note:</strong> This exam is {examStatus}. You can still adjust configuration like <strong>attempts</strong>, <strong>time limits</strong>, and <strong>results visibility</strong>, but core content (questions, seed SQL) is locked.
           </div>
         )}
 
@@ -501,7 +501,7 @@ const ExamBuilder: React.FC = () => {
                 min={1}
                 value={maxAttempts}
                 onChange={(event) => setMaxAttempts(Number(event.target.value) || 1)}
-                disabled={Boolean(readOnly)}
+                disabled={examStatus === 'CLOSED'}
                 aria-label="Maximum attempts allowed"
               />
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>How many times a student can submit this exam.</span>
@@ -514,12 +514,12 @@ const ExamBuilder: React.FC = () => {
                 min={1}
                 value={timeLimitMins}
                 onChange={(event) => setTimeLimitMins(Number(event.target.value) || 60)}
-                disabled={Boolean(readOnly)}
+                disabled={examStatus === 'CLOSED'}
                 aria-label="Exam time limit in minutes"
               />
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>Total duration available for each exam session.</span>
             </div>
-            <select className="form-input" value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value)} disabled={Boolean(readOnly)}>
+            <select className="form-input" value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value as VisibilityMode)} disabled={examStatus === 'CLOSED'}>
               <option value="IMMEDIATE">Immediate</option>
               <option value="END_OF_EXAM">End of Exam</option>
               <option value="NEVER">Never</option>

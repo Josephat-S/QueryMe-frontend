@@ -83,20 +83,12 @@ const SystemSettings: React.FC = () => {
       return accumulator;
     }, {});
 
-    // Fetch exams for first 15 courses using controlled chunks to avoid parallel request spikes
     const examsToFetch = courses.slice(0, 15);
-    const CHUNK_SIZE = 3;
-    const allExams: Exam[] = [];
-
-    for (let i = 0; i < examsToFetch.length; i += CHUNK_SIZE) {
-      const chunk = examsToFetch.slice(i, i + CHUNK_SIZE);
-      if (signal?.aborted) break;
-
-      const examLists = await Promise.all(
-        chunk.map((course) => examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[])),
-      );
-      allExams.push(...examLists.flat());
-    }
+    
+    const examLists = await Promise.all(
+      examsToFetch.map((course) => examApi.getExamsByCourse(String(course.id), { signal }).catch(() => [] as Exam[]))
+    );
+    const allExams = examLists.flat();
 
     return {
       coursesById,

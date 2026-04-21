@@ -4,8 +4,7 @@ import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
 import { getInitials } from '../../utils/queryme';
-
-const isNumericId = (value?: string | null): value is string => Boolean(value && /^\d+$/.test(value));
+import type { PlatformUser } from '../../types/queryme';
 
 const toFriendlyProfileError = (error: unknown, fallback: string): string => {
   const message = extractErrorMessage(error, fallback);
@@ -29,20 +28,23 @@ const StudentProfile: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [studentProfileId, setStudentProfileId] = useState<string | null>(null);
+  const [regNo, setRegNo] = useState('');
 
   const resolveStudentProfileId = useCallback(async (signal?: AbortSignal): Promise<string | null> => {
     if (!user) {
       return null;
     }
 
-    if (isNumericId(user.id)) {
-      return user.id;
+    // First try the user ID directly (could be numeric or UUID)
+    if (user.id) {
+      return String(user.id);
     }
 
+    // Fallback to sessions if ID is missing (unlikely)
     const sessions = await sessionApi.getSessionsByStudent(user.id, { signal }).catch(() => []);
     const fallbackId = sessions
       .map((session) => String(session.studentId || ''))
-      .find((id) => isNumericId(id));
+      .find((id) => id && id !== 'undefined');
 
     return fallbackId || null;
   }, [user]);
@@ -62,20 +64,31 @@ const StudentProfile: React.FC = () => {
       try {
         const resolvedStudentId = await resolveStudentProfileId(controller.signal);
 
-        if (!resolvedStudentId) {
-          if (!controller.signal.aborted) {
-            setStudentProfileId(null);
-            setName(user.name);
-            setEmail(user.email);
-          }
-          return;
+        let profile: Partial<PlatformUser> = {};
+        if (resolvedStudentId) {
+          profile = await userApi.getStudent(resolvedStudentId, controller.signal).catch(() => ({}));
         }
 
-        const profile = await userApi.getStudent(resolvedStudentId, controller.signal);
+        const finalRegNo = String(
+          profile.registrationNumber || 
+          profile.studentNumber || 
+          profile.student_number || 
+          (profile as unknown as { student?: { studentNumber?: string } }).student?.studentNumber ||
+          (profile as unknown as { student?: { student_number?: string } }).student?.student_number ||
+          (profile as unknown as { student?: { registrationNumber?: string } }).student?.registrationNumber ||
+          (profile as unknown as { student_id?: string }).student_id ||
+          (profile as unknown as { registration_number?: string }).registration_number ||
+          user.registrationNumber || 
+          ''
+        );
+
         if (!controller.signal.aborted) {
-          setStudentProfileId(resolvedStudentId);
+          if (resolvedStudentId) {
+            setStudentProfileId(resolvedStudentId);
+          }
           setName(String(profile.name || profile.fullName || user.name));
           setEmail(String(profile.email || user.email));
+          setRegNo(finalRegNo || 'N/A');
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -190,6 +203,10 @@ const StudentProfile: React.FC = () => {
                 <div>
                   <label className="profile-info-label">Email</label>
                   <input className="form-input" value={email} disabled style={{ width: '100%', opacity: 0.7, cursor: 'not-allowed' }} />
+                </div>
+                <div>
+                  <label className="profile-info-label">Registration Number</label>
+                  <input className="form-input" value={regNo} disabled style={{ width: '100%', opacity: 0.7, cursor: 'not-allowed' }} />
                 </div>
                 <div>
                   <label className="profile-info-label">New Password</label>

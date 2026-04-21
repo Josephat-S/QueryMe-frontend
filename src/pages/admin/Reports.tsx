@@ -50,39 +50,32 @@ const Reports: React.FC = () => {
         setMetrics(initialMetrics);
         setLoading(false); // Show table now
 
-        // Now fetch metrics in background using controlled chunks to avoid overwhelming the browser
-        const CHUNK_SIZE = 4;
-        for (let i = 0; i < courses.length; i += CHUNK_SIZE) {
-          const chunk = courses.slice(i, i + CHUNK_SIZE);
-          
-          if (controller.signal.aborted) break;
+        // Fetch all course metrics concurrently to ensure millisecond-level responsiveness
+        const reportRows = await Promise.all(
+          courses.map(async (course) => {
+            try {
+              const exams = await examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[]);
+              const resultRows = await Promise.all(
+                exams.map((exam) => resultApi.getExamDashboard(String(exam.id), { signal: controller.signal }).catch(() => [] as TeacherResultRow[])),
+              );
 
-          const reportRows = await Promise.all(
-            chunk.map(async (course) => {
-              try {
-                const exams = await examApi.getExamsByCourse(String(course.id), { signal: controller.signal }).catch(() => [] as Exam[]);
-                const resultRows = await Promise.all(
-                  exams.map((exam) => resultApi.getExamDashboard(String(exam.id), { signal: controller.signal }).catch(() => [] as TeacherResultRow[])),
-                );
+              return {
+                courseId: String(course.id),
+                exams,
+                resultRows: resultRows.flat(),
+                isLoaded: true,
+              };
+            } catch {
+              return { courseId: String(course.id), exams: [], resultRows: [], isLoaded: true };
+            }
+          }),
+        );
 
-                return {
-                  courseId: String(course.id),
-                  exams,
-                  resultRows: resultRows.flat(),
-                  isLoaded: true,
-                };
-              } catch {
-                return { courseId: String(course.id), exams: [], resultRows: [], isLoaded: true };
-              }
-            }),
-          );
-
-          if (!controller.signal.aborted) {
-            setMetrics(prev => prev.map(m => {
-              const data = reportRows.find(r => r.courseId === String(m.course.id));
-              return data ? { ...m, exams: data.exams, resultRows: data.resultRows, isLoaded: true } : m;
-            }));
-          }
+        if (!controller.signal.aborted) {
+          setMetrics(prev => prev.map(m => {
+            const data = reportRows.find(r => r.courseId === String(m.course.id));
+            return data ? { ...m, exams: data.exams, resultRows: data.resultRows, isLoaded: true } : m;
+          }));
         }
       } catch (err) {
         if (!controller.signal.aborted) {

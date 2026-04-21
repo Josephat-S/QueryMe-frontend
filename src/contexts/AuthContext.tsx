@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, ReactNode } from 'react';
 import { AuthContext } from './AuthContextContext';
-import { authApi } from '../api';
+import { authApi, userApi } from '../api';
 import type { AuthSessionUser } from '../types/queryme';
 import {
   clearAuthState,
@@ -16,8 +16,9 @@ export interface AuthContextType {
   user: AuthSessionUser | null;
   login: (email: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
-  signup: (fullName: string, email: string, password: string) => Promise<void>;
   updateCurrentUser: (nextUser: AuthSessionUser) => void;
+  resetPassword: (newPassword: string) => Promise<void>;
+  signUp: (fullName: string, email: string, registrationNumber: string, password: string) => Promise<void>;
 }
 
 interface AuthProviderProps {
@@ -43,14 +44,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     const normalizedUser = toAuthSessionUser(result, email);
+    if (result.mustResetPassword) {
+      normalizedUser.mustResetPassword = true;
+    }
     saveAuthState(result.token, normalizedUser, remember);
     setUser(normalizedUser);
   }, []);
-
-  const signup = useCallback(async (fullName: string, email: string, password: string) => {
-    await authApi.signUp({ fullName, email, password, role: 'STUDENT' });
-    await login(email, password, false);
-  }, [login]);
 
   const logout = useCallback(() => {
     clearAuthState();
@@ -62,14 +61,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(nextUser);
   }, []);
 
+  const resetPassword = useCallback(async (newPassword: string) => {
+    if (!user) throw new Error('No user logged in.');
+    
+    const payload = { password: newPassword };
+    if (user.role === 'STUDENT') {
+      await userApi.updateStudent(user.id, payload);
+    } else if (user.role === 'TEACHER') {
+      await userApi.updateTeacher(user.id, payload);
+    } else if (user.role === 'ADMIN') {
+      await userApi.updateAdmin(user.id, payload);
+    } else {
+      throw new Error('Unsupported role for password reset.');
+    }
+    
+    const nextUser = { ...user, mustResetPassword: false };
+    updateCurrentUser(nextUser);
+  }, [updateCurrentUser, user]);
+
+  const signUp = useCallback(async (fullName: string, email: string, registrationNumber: string, password: string) => {
+    await authApi.signUp({ fullName, email, registrationNumber, password });
+  }, []);
+
   const value = useMemo<AuthContextType>(() => ({
     isAuthenticated: Boolean(user && getStoredToken()),
     user,
     login,
     logout,
-    signup,
     updateCurrentUser,
-  }), [login, logout, signup, updateCurrentUser, user]);
+    resetPassword,
+    signUp,
+  }), [login, logout, updateCurrentUser, resetPassword, user, signUp]);
 
   return (
     <AuthContext value={value}>

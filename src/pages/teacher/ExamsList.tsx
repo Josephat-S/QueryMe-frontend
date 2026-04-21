@@ -78,7 +78,7 @@ const ExamsList: React.FC = () => {
     closed: exams.filter((e) => e.status === 'CLOSED').length,
   }), [exams]);
 
-  const runAction = async (examId: string, courseId: string, action: 'publish' | 'unpublish' | 'close' | 'delete') => {
+  const runAction = async (examId: string, courseId: string, action: 'publish' | 'unpublish' | 'close' | 'delete' | 'clone') => {
     setBusyExamId(examId);
     setError(null);
 
@@ -89,8 +89,10 @@ const ExamsList: React.FC = () => {
         await examApi.unpublishExam(examId);
       } else if (action === 'close') {
         await examApi.closeExam(examId);
-      } else {
+      } else if (action === 'delete') {
         await examApi.deleteExam(examId);
+      } else if (action === 'clone') {
+        await examApi.cloneExam(examId);
       }
 
       // Invalidate the specific course's exam cache and published exams cache
@@ -179,6 +181,9 @@ const ExamsList: React.FC = () => {
                       <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700" onClick={() => navigate(`/teacher/exams/builder/${exam.id}`)}>
                         Edit
                       </button>
+                      <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'clone')}>
+                        Clone
+                      </button>
                       {exam.status === 'DRAFT' && (
                         <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'publish')}>
                           Publish
@@ -221,6 +226,9 @@ const ExamsList: React.FC = () => {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700" onClick={() => navigate(`/teacher/exams/builder/${exam.id}`)}>
                     Edit
+                  </button>
+                  <button className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'clone')}>
+                    Clone
                   </button>
                   {exam.status === 'DRAFT' && (
                     <button className="inline-flex items-center rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={busyExamId === exam.id} onClick={() => void runAction(exam.id, exam.courseId, 'publish')}>
