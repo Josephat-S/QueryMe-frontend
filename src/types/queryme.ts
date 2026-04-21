@@ -70,6 +70,7 @@ export interface Course {
 
 export interface CreateCoursePayload {
   name: string;
+  code?: string;
   description?: string;
 }
 
