@@ -44,4 +44,18 @@ export const sessionApi = {
     const page = await this.getSessionsByExamPage(examId, params);
     return page.content;
   },
+  
+  async sendHeartbeat(sessionId: string): Promise<void> {
+    await axiosInstance.post(`/sessions/${sessionId}/heartbeat`);
+  },
+
+  async updateFeedback(sessionId: string, feedback: string): Promise<Session> {
+    const response = await axiosInstance.patch<Session>(`/sessions/${sessionId}/feedback`, { feedback });
+    return unwrapResponse(response);
+  },
+
+  async extendSession(sessionId: string): Promise<Session> {
+    const response = await axiosInstance.post<Session>(`/sessions/${sessionId}/extend`);
+    return unwrapResponse(response);
+  },
 };

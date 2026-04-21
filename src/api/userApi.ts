@@ -7,7 +7,7 @@ import {
   type PaginatedResponse,
   type PaginationParams,
 } from './helpers';
-import type { PlatformUser, UserRegistrationPayload, UserUpdatePayload } from '../types/queryme';
+import type { PlatformUser, RegistrationRequest, UserRegistrationPayload, UserUpdatePayload } from '../types/queryme';
 
 export type { PaginatedResponse, PaginationParams };
 
@@ -91,4 +91,23 @@ export const userApi = {
     return unwrapResponse(response);
   },
 
+  async deleteStudent(id: string, signal?: AbortSignal): Promise<void> {
+    await axiosInstance.delete(`/students/${id}`, { signal });
+  },
+  async deleteTeacher(id: string, signal?: AbortSignal): Promise<void> {
+    await axiosInstance.delete(`/teachers/${id}`, { signal });
+  },
+  async deleteAdmin(id: string, signal?: AbortSignal): Promise<void> {
+    await axiosInstance.delete(`/admins/${id}`, { signal });
+  },
+  async getRegistrationRequests(signal?: AbortSignal): Promise<RegistrationRequest[]> {
+    const response = await axiosInstance.get('/admins/registration-requests', { signal });
+    return unwrapResponse(response);
+  },
+  async approveRegistrationRequest(id: string, signal?: AbortSignal): Promise<void> {
+    await axiosInstance.post(`/admins/registration-requests/${id}/approve`, {}, { signal });
+  },
+  async rejectRegistrationRequest(id: string, reason: string, signal?: AbortSignal): Promise<void> {
+    await axiosInstance.post(`/admins/registration-requests/${id}/reject`, { reason }, { signal });
+  },
 };

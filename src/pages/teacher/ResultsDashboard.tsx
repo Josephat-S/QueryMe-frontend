@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { type Exam, type TeacherResultRow } from '../../api';
+import { examApi, sessionApi, type Exam, type TeacherResultRow } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
+import { useToast } from '../../components/ToastContext';
 import { getCourseName } from '../../utils/queryme';
+import { extractErrorMessage } from '../../utils/errorUtils';
 import { usePublishedExams } from '../../hooks/usePublishedExams';
 import { useExamDashboard } from '../../hooks/useExamDashboard';
 
@@ -44,6 +46,10 @@ const ResultsDashboard: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState<StudentSummaryRow | null>(null);
+  const [feedbackSessionId, setFeedbackSessionId] = useState<string | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [isUpdatingFeedback, setIsUpdatingFeedback] = useState(false);
+  const { showToast } = useToast();
 
   // ── Cached data fetching ──────────────────────────────────────────────────
   // Derive the active exam — use the user selection if set, otherwise fall back to the first option.
@@ -61,7 +67,8 @@ const ResultsDashboard: React.FC = () => {
 
   const selectedExamLabel = useMemo(() => {
     if (!selectedExam) return 'Selected exam';
-    return `${selectedExam.title} - ${getCourseName(selectedExam.course, selectedExam.courseId)}`;
+    const coursePart = selectedExam.courseName || getCourseName(selectedExam.course, selectedExam.courseId);
+    return `${selectedExam.title} - ${coursePart}`;
   }, [selectedExam]);
 
   // ── Aggregate rows by student, pre-computing the search haystack ──────────
@@ -234,6 +241,38 @@ const ResultsDashboard: React.FC = () => {
     doc.save(`${getExportFileBase()}.pdf`);
   };
 
+  const handleGrantAttempt = async (studentId: string) => {
+    if (!effectiveExamId) return;
+    try {
+      await examApi.grantAdditionalAttempt(effectiveExamId, studentId, 1);
+      showToast('success', 'Attempt Granted', 'Successfully granted an additional attempt to the student.');
+    } catch (err) {
+      showToast('error', 'Action Failed', extractErrorMessage(err, 'Failed to grant additional attempt.'));
+    }
+  };
+
+  const handleOpenFeedback = (student: StudentSummaryRow) => {
+    const sessionId = String(student.details[0]?.sessionId || '');
+    setFeedbackSessionId(sessionId);
+    // Load existing feedback from the first detail row
+    setFeedbackText(student.details[0]?.teacherFeedback || ''); 
+    setSelectedStudent(student);
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackSessionId) return;
+    setIsUpdatingFeedback(true);
+    try {
+      await sessionApi.updateFeedback(feedbackSessionId, feedbackText);
+      showToast('success', 'Feedback Saved', 'Successfully updated feedback for the session.');
+      setFeedbackSessionId(null);
+    } catch (err) {
+      showToast('error', 'Action Failed', extractErrorMessage(err, 'Failed to update feedback.'));
+    } finally {
+      setIsUpdatingFeedback(false);
+    }
+  };
+
   if (loadingOptions) return <PageSkeleton title="Results Dashboard" rows={6} />;
 
   return (
@@ -252,7 +291,7 @@ const ResultsDashboard: React.FC = () => {
           <option value="">Select exam</option>
           {(examOptions as Exam[]).map((exam) => (
             <option key={String(exam.id)} value={String(exam.id)}>
-              {exam.title} - {getCourseName(exam.course, exam.courseId)}
+              {exam.title} - {exam.courseName || getCourseName(exam.course, exam.courseId)}
             </option>
           ))}
         </select>
@@ -323,7 +362,11 @@ const ResultsDashboard: React.FC = () => {
                       </td>
                       <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</td>
                       <td className="border-t border-slate-100 px-4 py-3">
-                        <button type="button" className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700" onClick={(e) => { e.stopPropagation(); setSelectedStudent(student); }}>View</button>
+                        <div className="flex gap-2">
+                          <button type="button" className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700" onClick={(e) => { e.stopPropagation(); setSelectedStudent(student); }}>View</button>
+                          <button type="button" className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:text-blue-700" onClick={(e) => { e.stopPropagation(); handleGrantAttempt(student.studentId); }}>+ Attempt</button>
+                          <button type="button" className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-amber-300 hover:text-amber-700" onClick={(e) => { e.stopPropagation(); handleOpenFeedback(student); }}>Feedback</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -397,6 +440,36 @@ const ResultsDashboard: React.FC = () => {
                 </table>
               </div>
             </div>
+
+            {feedbackSessionId && (
+              <div className="mx-5 mb-5 p-4 border rounded-xl bg-slate-50">
+                <h3 className="text-sm font-semibold text-slate-900 mb-2">Teacher Feedback</h3>
+                <textarea
+                  className="w-full p-3 border rounded-lg text-sm mb-3 focus:ring-2 focus:ring-violet-500 outline-none"
+                  rows={3}
+                  placeholder="Enter feedback for this student's exam session..."
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  disabled={isUpdatingFeedback}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                    onClick={() => setFeedbackSessionId(null)}
+                    disabled={isUpdatingFeedback}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-4 py-2 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-lg transition"
+                    onClick={handleSubmitFeedback}
+                    disabled={isUpdatingFeedback}
+                  >
+                    {isUpdatingFeedback ? 'Saving...' : 'Save Feedback'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

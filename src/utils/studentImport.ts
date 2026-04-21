@@ -1,35 +1,33 @@
 import * as XLSX from 'xlsx';
 import type { Identifier, UserRegistrationPayload } from '../types/queryme';
 
-type StudentImportField = 'fullName' | 'email' | 'password' | 'courseId' | 'classGroupId';
+type StudentImportField = 'fullName' | 'email' | 'registrationNumber';
 
 const STUDENT_IMPORT_HEADERS: Record<StudentImportField, string[]> = {
-  fullName: ['full_name', 'fullname', 'name', 'student_name', 'student'],
-  email: ['email', 'email_address', 'student_email'],
-  password: ['password', 'temporary_password', 'temp_password', 'passcode', 'pass'],
-  courseId: ['course_id', 'courseid', 'course'],
-  classGroupId: ['class_group_id', 'classgroupid', 'class_group', 'classgroup', 'group_id'],
+  fullName: ['full_name', 'fullname', 'name', 'student_name', 'student', 'full_name'],
+  email: ['email', 'email_address', 'student_email', 'emailaddress'],
+  registrationNumber: ['registration_number', 'reg_number', 'regno', 'student_id_number', 'reg_no', 'registrationnumber', 'registration_no'],
 };
 
-const REQUIRED_STUDENT_IMPORT_FIELDS: StudentImportField[] = ['fullName', 'email', 'password'];
+const REQUIRED_STUDENT_IMPORT_FIELDS: StudentImportField[] = ['fullName', 'email', 'registrationNumber'];
 
 export interface StudentImportRow {
   id: string;
   rowNumber: number;
   fullName: string;
   email: string;
-  password: string;
-  courseId: string;
-  classGroupId: string;
+  registrationNumber: string;
+  courseId?: string;
+  classGroupId?: string;
   errors: string[];
 }
 
 export const STUDENT_IMPORT_ACCEPT = '.csv,.xlsx,.xls';
 
 export const STUDENT_IMPORT_TEMPLATE = [
-  'fullName,email,password,courseId,classGroupId',
-  'Jane Doe,jane@example.com,Welcome123!,,',
-  'John Smith,john@example.com,Welcome123!,,',
+  'fullName,email,registrationNumber',
+  'Jane Doe,jane@example.com,REG-1001',
+  'John Smith,john@example.com,REG-1002',
 ].join('\n');
 
 const normalizeText = (value: unknown): string => String(value ?? '').trim();
@@ -81,8 +79,8 @@ const validateStudentImportRow = (row: StudentImportRow): string[] => {
     errors.push('Email format looks invalid.');
   }
 
-  if (!row.password) {
-    errors.push('Password is required.');
+  if (!row.registrationNumber) {
+    errors.push('Registration number is required.');
   }
 
   return errors;
@@ -133,9 +131,7 @@ export const parseStudentImportFile = async (file: File): Promise<StudentImportR
       rowNumber: index + 2,
       fullName: getRowValue(row, headerMap, 'fullName'),
       email: getRowValue(row, headerMap, 'email').toLowerCase(),
-      password: getRowValue(row, headerMap, 'password'),
-      courseId: getRowValue(row, headerMap, 'courseId'),
-      classGroupId: getRowValue(row, headerMap, 'classGroupId'),
+      registrationNumber: getRowValue(row, headerMap, 'registrationNumber'),
       errors: [],
     };
 
@@ -160,19 +156,19 @@ export const parseStudentImportFile = async (file: File): Promise<StudentImportR
 };
 
 export const buildStudentRegistrationPayload = (
-  row: Pick<StudentImportRow, 'fullName' | 'email' | 'password' | 'courseId' | 'classGroupId'>,
+  row: Pick<StudentImportRow, 'fullName' | 'email' | 'registrationNumber'>,
   overrides?: {
     courseId?: Identifier | '' | null;
     classGroupId?: Identifier | '' | null;
   },
 ): UserRegistrationPayload => {
-  const courseId = overrides?.courseId ?? row.courseId;
-  const classGroupId = overrides?.classGroupId ?? row.classGroupId;
+  const courseId = overrides?.courseId ?? '';
+  const classGroupId = overrides?.classGroupId ?? '';
 
   return {
     fullName: row.fullName.trim(),
     email: row.email.trim().toLowerCase(),
-    password: row.password.trim(),
+    registrationNumber: row.registrationNumber.trim(),
     ...(courseId ? { courseId } : {}),
     ...(classGroupId ? { classGroupId } : {}),
   };

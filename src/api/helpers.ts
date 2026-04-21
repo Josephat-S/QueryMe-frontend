@@ -107,14 +107,29 @@ type BackendUserPayload = {
 };
 
 export const toBackendUserPayload = <T extends BackendUserPayload>(payload: T): Record<string, unknown> => {
-  const { name, fullName, ...rest } = payload;
+  const p = payload as T & Record<string, unknown>;
+  const { name, fullName, registrationNumber, studentNumber: sn, student_number: sn2, ...rest } = p;
+  const studentNumberValue = sn || sn2 || registrationNumber;
+
   const normalizedFullName = typeof fullName === 'string' && fullName.trim()
     ? fullName.trim()
     : typeof name === 'string' && name.trim()
       ? name.trim()
       : undefined;
 
-  return normalizedFullName
-    ? { ...rest, fullName: normalizedFullName }
-    : rest;
+  const result: Record<string, unknown> = { ...rest };
+  
+  if (normalizedFullName) {
+    result.fullName = normalizedFullName;
+  }
+  
+  // Map registrationNumber/studentNumber to all variations for backend compatibility
+  if (typeof studentNumberValue === 'string' && studentNumberValue.trim()) {
+    const value = studentNumberValue.trim();
+    result.registrationNumber = value;
+    result.studentNumber = value;
+    result.student_number = value;
+  }
+
+  return result;
 };

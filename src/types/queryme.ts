@@ -22,6 +22,8 @@ export interface PlatformUser {
   roles?: string[];
   courseId?: Identifier | null;
   classGroupId?: Identifier | null;
+  registrationNumber?: string;
+  mustResetPassword?: boolean;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -32,6 +34,8 @@ export interface AuthSessionUser {
   email: string;
   name: string;
   role: UserRole;
+  registrationNumber?: string;
+  mustResetPassword?: boolean;
 }
 
 export interface AuthResponse {
@@ -43,12 +47,15 @@ export interface AuthResponse {
   fullName?: string;
   role?: UserRole | string;
   roles?: string[];
+  mustResetPassword?: boolean;
 }
 
 export interface SignupPayload {
   fullName: string;
   email: string;
   password: string;
+  studentNumber?: string;
+  registrationNumber?: string;
   role?: UserRole;
 }
 
@@ -99,6 +106,7 @@ export interface CourseEnrollmentPayload {
 export interface Exam {
   id: Identifier;
   courseId: Identifier;
+  courseName?: string;
   title: string;
   description?: string;
   maxAttempts?: number;
@@ -164,6 +172,8 @@ export interface Session {
   isSubmitted?: boolean;
   isExpired?: boolean;
   status?: string;
+  feedback?: string;
+  teacherFeedback?: string;
   [key: string]: unknown;
 }
 
@@ -199,6 +209,7 @@ export interface StudentExamQuestionResult {
   score?: number;
   maxScore?: number;
   isCorrect?: boolean;
+  status?: 'CORRECT' | 'INCORRECT' | 'PARTIAL' | 'NOT_ATTEMPTED';
   submittedAt?: string | null;
   resultColumns?: string[];
   resultRows?: unknown[][];
@@ -213,6 +224,9 @@ export interface StudentExamResult {
   totalScore?: number;
   totalMaxScore?: number;
   questions?: StudentExamQuestionResult[];
+  teacherFeedback?: string;
+  examTitle?: string;
+  courseName?: string;
   [key: string]: unknown;
 }
 
@@ -227,6 +241,7 @@ export interface TeacherResultRow {
   isCorrect?: boolean;
   submittedQuery?: string;
   submittedAt?: string;
+  teacherFeedback?: string;
   [key: string]: unknown;
 }
 
@@ -250,6 +265,7 @@ export interface UserRegistrationPayload {
   student_number?: string;
   courseId?: Identifier | null;
   classGroupId?: Identifier | null;
+  registrationNumber?: string;
 }
 
 export interface UserUpdatePayload {
@@ -260,4 +276,16 @@ export interface UserUpdatePayload {
   student_number?: string | null;
   courseId?: Identifier | null;
   classGroupId?: Identifier | null;
+  registrationNumber?: string | null;
+}
+
+export interface RegistrationRequest {
+  id: string;
+  fullName: string;
+  email: string;
+  registrationNumber: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  processedAt?: string;
+  processingNote?: string;
 }

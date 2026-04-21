@@ -1,25 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { courseApi } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
-import { useToast } from '../../components/ToastContext';
 import { useAuth } from '../../contexts';
 import { useTheme } from '../../contexts';
-import { extractErrorMessage } from '../../utils/errorUtils';
 import { useTeacherCourses } from '../../hooks/useTeacherCourses';
 
 const TeacherCourses: React.FC = () => {
   const { user } = useAuth();
   const { isDarkMode } = useTheme();
-  const { showToast } = useToast();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: courses, loading, error: coursesError, refresh } = useTeacherCourses(user?.id);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const sortedCourses = useMemo(
     () => [...courses].sort((left, right) => left.name.localeCompare(right.name)),
@@ -32,50 +23,22 @@ const TeacherCourses: React.FC = () => {
   );
 
   const handleRefresh = async () => {
-    setError(null);
+    setRefreshing(true);
     await refresh();
-  };
-
-  const handleCreateCourse = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (!name.trim()) {
-      setError('Course name is required.');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const createdCourse = await courseApi.createCourse({
-        name: name.trim(),
-        description: description.trim() || undefined,
-      });
-
-      // Invalidate the shared courses cache so all pages see the new course
-      await queryClient.invalidateQueries({ queryKey: ['courses'] });
-      setName('');
-      setDescription('');
-      showToast('success', 'Course created', `"${createdCourse.name}" is now ready for exams and enrollments.`);
-    } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to create the course.'));
-    } finally {
-      setSaving(false);
-    }
+    setRefreshing(false);
   };
 
   if (loading) {
     return <PageSkeleton title="Courses" rows={5} />;
   }
 
-  const pageError = error || coursesError;
+  const pageError = coursesError;
 
   return (
     <div className="teacher-page" style={{ padding: 'clamp(12px, 2.8vw, 24px)', overflowY: 'auto' }}>
       <div className="page-header">
         <h1>Courses</h1>
-        <p>Create courses from the teacher portal and use them immediately for exams and student enrollment.</p>
+        <p>View your assigned courses. Use them for exams and student enrollment.</p>
       </div>
 
       <div className="stat-grid" style={{ marginBottom: '20px', width: '100%' }}>
@@ -86,74 +49,19 @@ const TeacherCourses: React.FC = () => {
 
       {pageError && <div style={{ marginBottom: '16px', color: '#e53e3e', fontSize: '13px' }}>{pageError}</div>}
 
-      <div className="course-page-grid" style={{ gap: '20px', width: '100%' }}>
-        <div className="content-card">
-          <div className="content-card-header">
-            <h2>Create Course</h2>
-          </div>
-          <div className="content-card-body">
-            <form onSubmit={(event) => void handleCreateCourse(event)} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="course-form-field">
-                <label className="course-form-label" htmlFor="teacher-course-name">Course Name</label>
-                <input
-                  id="teacher-course-name"
-                  className="form-input"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Database Systems"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="course-form-field">
-                <label className="course-form-label" htmlFor="teacher-course-description">Description</label>
-                <textarea
-                  id="teacher-course-description"
-                  className="form-input"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Short summary of the course, class level, or exam focus."
-                  style={{ width: '100%', minHeight: '120px', resize: 'vertical' }}
-                />
-              </div>
-
-              <div className="course-helper-box">
-                New courses are linked to your teacher account and become available in the exam builder right away.
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button className="btn btn-primary w-full sm:w-auto" type="submit" disabled={saving}>
-                  {saving ? 'Creating...' : 'Create Course'}
-                </button>
-                <button
-                  className="btn btn-secondary w-full sm:w-auto"
-                  type="button"
-                  disabled={saving || (!name && !description)}
-                  onClick={() => {
-                    setName('');
-                    setDescription('');
-                    setError(null);
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
+      <div style={{ width: '100%' }}>
         <div className="content-card">
           <div className="content-card-header">
             <h2>Your Courses</h2>
-            <button className="btn btn-secondary btn-sm" onClick={() => void handleRefresh()} disabled={saving}>
-              Refresh
+            <button className="btn btn-secondary btn-sm" onClick={() => void handleRefresh()} disabled={refreshing}>
+              {refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
 
           {sortedCourses.length === 0 ? (
-            <div className="course-empty">
-              <p>No courses have been created from your portal yet.</p>
-              <p>Your first course will appear here as soon as you save it.</p>
+            <div className="course-empty" style={{ padding: '40px', textAlign: 'center', backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', border: '2px dashed #cbd5e1' }}>
+              <p style={{ margin: 0, fontWeight: 600, color: isDarkMode ? '#f1f5f9' : '#475569' }}>No courses assigned yet.</p>
+              <p style={{ margin: '8px 0 0', fontSize: '13px', color: isDarkMode ? '#94a3b8' : '#64748b' }}>If you believe this is an error, please contact your administrator.</p>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '16px', marginTop: '16px' }}>
