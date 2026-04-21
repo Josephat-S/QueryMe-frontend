@@ -174,6 +174,8 @@ export interface Session {
   status?: string;
   feedback?: string;
   teacherFeedback?: string;
+  totalScore?: number;
+  totalMaxScore?: number;
   [key: string]: unknown;
 }
 
@@ -242,6 +244,8 @@ export interface TeacherResultRow {
   submittedQuery?: string;
   submittedAt?: string;
   teacherFeedback?: string;
+  totalScore?: number;
+  totalMaxScore?: number;
   [key: string]: unknown;
 }
 

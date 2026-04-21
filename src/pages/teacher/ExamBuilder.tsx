@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { examApi, questionApi, type Exam, type Question, type VisibilityMode } from '../../api';
+import { courseApi, examApi, questionApi, type Course, type Exam, type Question, type VisibilityMode } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { useToast } from '../../components/ToastContext';
 import { extractErrorMessage } from '../../utils/errorUtils';
-import { normalizeExamStatus } from '../../utils/queryme';
-import { useTeacherCourses } from '../../hooks/useTeacherCourses';
+import { filterCoursesByTeacher, normalizeExamStatus } from '../../utils/queryme';
 
 interface QuestionDraft {
   localId: string;
@@ -65,8 +64,7 @@ const ExamBuilder: React.FC = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Use shared cached courses instead of fetching on mount
-  const { data: courses } = useTeacherCourses(user?.id);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [title, setTitle] = useState('');
   const [courseId, setCourseId] = useState('');
   const [description, setDescription] = useState('');
@@ -77,7 +75,7 @@ const ExamBuilder: React.FC = () => {
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
   const [examStatus, setExamStatus] = useState('DRAFT');
   const [workingExamId, setWorkingExamId] = useState<string | null>(examId ?? null);
-  const [loading, setLoading] = useState(Boolean(examId)); // only show skeleton when editing existing
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -86,8 +84,6 @@ const ExamBuilder: React.FC = () => {
   const readOnly = useMemo(() => Boolean(activeExamId) && examStatus !== 'DRAFT', [activeExamId, examStatus]);
   const requestedCourseId = searchParams.get('courseId') || '';
 
-  // Load exam data (and set initial courseId) when editing an existing exam.
-  // Course list comes from the shared cache — no need to fetch here.
   useEffect(() => {
     const controller = new AbortController();
 
@@ -97,38 +93,44 @@ const ExamBuilder: React.FC = () => {
         return;
       }
 
-      // When creating a new exam, set the default course from cache (no extra request)
-      if (!examId) {
-        const preferredCourseId = requestedCourseId && courses.some((c) => String(c.id) === requestedCourseId)
-          ? requestedCourseId
-          : courses[0]
-            ? String(courses[0].id)
-            : '';
-        setCourseId((previous) => previous || preferredCourseId);
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       setError(null);
 
       try {
-        const [exam, existingQuestions] = await Promise.all([
-          examApi.getExam(examId, controller.signal),
-          questionApi.getQuestions(examId, controller.signal),
-        ]);
+        const allCourses = await courseApi.getCourses({ page: 1, pageSize: 100, signal: controller.signal });
+        const teacherCourses = filterCoursesByTeacher(allCourses, user.id);
 
         if (!controller.signal.aborted) {
-          setWorkingExamId(String(exam.id));
-          setTitle(exam.title);
-          setCourseId(String(exam.courseId));
-          setDescription(exam.description || '');
-          setMaxAttempts(exam.maxAttempts ?? 1);
-          setTimeLimitMins(exam.timeLimitMins ?? exam.timeLimit ?? 60);
-          setVisibilityMode(String(exam.visibilityMode || DEFAULT_VISIBILITY));
-          setSeedSql(String(exam.seedSql || ''));
-          setExamStatus(normalizeExamStatus(exam.status) || 'DRAFT');
-          setQuestions(existingQuestions.length ? existingQuestions.map((question) => createQuestionDraft(question)) : []);
+          setCourses(teacherCourses);
+          if (!examId) {
+            const preferredCourseId = requestedCourseId && teacherCourses.some((course) => String(course.id) === requestedCourseId)
+              ? requestedCourseId
+              : teacherCourses[0]
+                ? String(teacherCourses[0].id)
+                : '';
+
+            setCourseId((previous) => previous || preferredCourseId);
+          }
+        }
+
+        if (examId) {
+          const [exam, existingQuestions] = await Promise.all([
+            examApi.getExam(examId, controller.signal),
+            questionApi.getQuestions(examId, controller.signal),
+          ]);
+
+          if (!controller.signal.aborted) {
+            setWorkingExamId(String(exam.id));
+            setTitle(exam.title);
+            setCourseId(String(exam.courseId));
+            setDescription(exam.description || '');
+            setMaxAttempts(exam.maxAttempts ?? 1);
+            setTimeLimitMins(exam.timeLimitMins ?? exam.timeLimit ?? 60);
+            setVisibilityMode(String(exam.visibilityMode || DEFAULT_VISIBILITY));
+            setSeedSql(String(exam.seedSql || ''));
+            setExamStatus(normalizeExamStatus(exam.status) || 'DRAFT');
+            setQuestions(existingQuestions.length ? existingQuestions.map((question) => createQuestionDraft(question)) : []);
+          }
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -143,7 +145,7 @@ const ExamBuilder: React.FC = () => {
 
     void loadBuilder();
     return () => controller.abort();
-  }, [examId, requestedCourseId, user, courses]);
+  }, [examId, requestedCourseId, user]);
 
   const updateQuestion = (localId: string, patch: Partial<QuestionDraft>) => {
     setQuestions((previous) => previous.map((question) => (question.localId === localId ? { ...question, ...patch } : question)));
@@ -349,8 +351,8 @@ const ExamBuilder: React.FC = () => {
   };
 
   const handleSaveDraft = async () => {
-    if (examStatus === 'CLOSED') {
-      showToast('warning', 'Exam locked', 'Closed exams cannot be edited.');
+    if (readOnly) {
+      showToast('warning', 'Exam locked', 'Only draft exams can be edited from this builder.');
       return;
     }
 
@@ -361,7 +363,7 @@ const ExamBuilder: React.FC = () => {
       const { wasCreated, wasReused } = await persistDraft(false);
       showToast(
         'success',
-        wasCreated ? 'Draft created' : wasReused ? 'Draft reopened' : 'Settings updated',
+        wasCreated ? 'Draft created' : wasReused ? 'Draft reopened' : 'Draft updated',
         wasCreated
           ? 'The exam draft was created. You can now add questions and publish later.'
           : wasReused
@@ -457,8 +459,8 @@ const ExamBuilder: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => navigate('/teacher/exams')}>Cancel</button>
-          <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || examStatus === 'CLOSED'}>
-            {saving ? saveProgress || 'Saving...' : (examStatus === 'DRAFT' || !examId ? 'Save Draft' : 'Update Settings')}
+          <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || readOnly}>
+            {saving ? saveProgress || 'Saving...' : 'Save Draft'}
           </button>
           <button className="btn btn-secondary" onClick={() => void handleSaveQuestions()} disabled={saving || readOnly || !activeExamId}>
             {saving ? saveProgress || 'Saving...' : 'Save Questions'}
@@ -477,8 +479,8 @@ const ExamBuilder: React.FC = () => {
           </div>
         )}
         {readOnly && (
-          <div style={{ color: '#2563eb', fontSize: '13px', background: '#f0f7ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-            <strong>Note:</strong> This exam is {examStatus}. You can still adjust configuration like <strong>attempts</strong>, <strong>time limits</strong>, and <strong>results visibility</strong>, but core content (questions, seed SQL) is locked.
+          <div style={{ color: '#dd6b20', fontSize: '13px' }}>
+            This exam is no longer in draft status. The backend only allows updates to draft exams, so the form is read-only.
           </div>
         )}
 
@@ -501,7 +503,7 @@ const ExamBuilder: React.FC = () => {
                 min={1}
                 value={maxAttempts}
                 onChange={(event) => setMaxAttempts(Number(event.target.value) || 1)}
-                disabled={examStatus === 'CLOSED'}
+                disabled={Boolean(readOnly)}
                 aria-label="Maximum attempts allowed"
               />
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>How many times a student can submit this exam.</span>
@@ -514,12 +516,12 @@ const ExamBuilder: React.FC = () => {
                 min={1}
                 value={timeLimitMins}
                 onChange={(event) => setTimeLimitMins(Number(event.target.value) || 60)}
-                disabled={examStatus === 'CLOSED'}
+                disabled={Boolean(readOnly)}
                 aria-label="Exam time limit in minutes"
               />
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>Total duration available for each exam session.</span>
             </div>
-            <select className="form-input" value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value as VisibilityMode)} disabled={examStatus === 'CLOSED'}>
+            <select className="form-input" value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value)} disabled={Boolean(readOnly)}>
               <option value="IMMEDIATE">Immediate</option>
               <option value="END_OF_EXAM">End of Exam</option>
               <option value="NEVER">Never</option>

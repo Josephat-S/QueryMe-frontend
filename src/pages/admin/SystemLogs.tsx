@@ -148,43 +148,49 @@ const SystemLogs: React.FC = () => {
           setRows(createdEvents);
         }
 
-        // Fetch sessions for the first 10 exams concurrently to ensure millisecond-level responsiveness
+        // Fetch sessions for the first 10 exams using controlled chunks to avoid massive waterfall
         const examsToFetch = exams.slice(0, 10);
+        const CHUNK_SIZE = 3;
         
-        const sessionLists = await Promise.all(
-          examsToFetch.map(async (exam) => {
-            const sessions = await sessionApi.getSessionsByExam(String(exam.id), { page: 1, pageSize: 20, signal: controller.signal }).catch(() => [] as Session[]);
+        for (let i = 0; i < examsToFetch.length; i += CHUNK_SIZE) {
+          const chunk = examsToFetch.slice(i, i + CHUNK_SIZE);
+          if (controller.signal.aborted) break;
 
-            return sessions
-              .filter((session) => Boolean(session.submittedAt || session.isSubmitted))
-              .map((session) => {
-                const sessionRecord = asRecord(session);
-                const sessionStudentIdentifiers = [String(session.studentId), ...getKnownIdentifiers(sessionRecord)];
-                const matchedStudent = sessionStudentIdentifiers
-                  .map((identifier) => studentById.get(identifier))
-                  .find(Boolean);
-                const inlineName = getPossiblePersonName(sessionRecord);
-                const studentName = inlineName || getUserDisplayName(matchedStudent);
+          const sessionLists = await Promise.all(
+            chunk.map(async (exam) => {
+              const sessions = await sessionApi.getSessionsByExam(String(exam.id), { page: 1, pageSize: 20, signal: controller.signal }).catch(() => [] as Session[]);
 
-                return {
-                  id: `session-finished-${String(session.id)}`,
-                  event: 'STUDENT_FINISHED',
-                  examTitle: exam.title || 'Untitled Exam',
-                  actorName: studentName === 'Unknown User' ? 'Unknown Person' : studentName,
-                  statusLabel: 'FINISHED',
-                  occurredAt: String(session.submittedAt || session.startedAt || ''),
-                } satisfies ActivityRow;
-              });
-          }),
-        );
+              return sessions
+                .filter((session) => Boolean(session.submittedAt || session.isSubmitted))
+                .map((session) => {
+                  const sessionRecord = asRecord(session);
+                  const sessionStudentIdentifiers = [String(session.studentId), ...getKnownIdentifiers(sessionRecord)];
+                  const matchedStudent = sessionStudentIdentifiers
+                    .map((identifier) => studentById.get(identifier))
+                    .find(Boolean);
+                  const inlineName = getPossiblePersonName(sessionRecord);
+                  const studentName = inlineName || getUserDisplayName(matchedStudent);
 
-        if (!controller.signal.aborted) {
-          setRows((prev) => {
-            const newRows = [...prev, ...sessionLists.flat()];
-            // De-duplicate and sort
-            return Array.from(new Map(newRows.map(r => [r.id, r])).values())
-              .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime());
-          });
+                  return {
+                    id: `session-finished-${String(session.id)}`,
+                    event: 'STUDENT_FINISHED',
+                    examTitle: exam.title || 'Untitled Exam',
+                    actorName: studentName === 'Unknown User' ? 'Unknown Person' : studentName,
+                    statusLabel: 'FINISHED',
+                    occurredAt: String(session.submittedAt || session.startedAt || ''),
+                  } satisfies ActivityRow;
+                });
+            }),
+          );
+
+          if (!controller.signal.aborted) {
+            setRows((prev) => {
+              const newRows = [...prev, ...sessionLists.flat()];
+              // De-duplicate and sort
+              return Array.from(new Map(newRows.map(r => [r.id, r])).values())
+                .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime());
+            });
+          }
         }
       } catch (err) {
         if (!controller.signal.aborted) {
