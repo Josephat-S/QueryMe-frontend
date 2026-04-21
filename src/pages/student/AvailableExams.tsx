@@ -4,8 +4,9 @@ import { resultApi, type Exam, type Session } from '../../api';
 import { PageSkeleton } from '../../components/PageSkeleton';
 import { usePublishedExams } from '../../hooks/usePublishedExams';
 import { useStudentSessions } from '../../hooks/useStudentSessions';
+import { useAdditionalAttempts } from '../../hooks/useAdditionalAttempts';
 import { useAuth } from '../../contexts';
-import { getExamTimeLimit, isSessionComplete, normalizeExamStatus } from '../../utils/queryme';
+import { getCourseName, getExamTimeLimit, isSessionComplete, normalizeExamStatus } from '../../utils/queryme';
 
 type ExamActionState = 'START' | 'REATTEMPT' | 'ATTEMPTED' | 'CLOSED';
 
@@ -40,10 +41,16 @@ const AvailableExams: React.FC = () => {
     refresh: refreshSessions,
   } = useStudentSessions(user?.id);
 
+  const examIds = React.useMemo(() => (data ?? EMPTY_EXAMS).map((e) => String(e.id)), [data]);
+  const {
+    data: additionalAttempts,
+    isLoading: additionalLoading,
+  } = useAdditionalAttempts(user?.id, examIds);
+
   const exams = data ?? EMPTY_EXAMS;
   const sessions = sessionsData ?? EMPTY_SESSIONS;
   const [marksByExamId, setMarksByExamId] = React.useState<Record<string, string>>({});
-  const [pendingStartExam, setPendingStartExam] = React.useState<Pick<ExamCardView, 'id' | 'title' | 'durationMins'> | null>(null);
+  const [pendingStartExam, setPendingStartExam] = React.useState<Pick<ExamCardView, 'id' | 'title' | 'durationMins' | 'actionState'> | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -72,29 +79,24 @@ const AvailableExams: React.FC = () => {
 
       const completedSessions = [...completedByExam.entries()];
       const marksEntries: [string, string][] = [];
-      const CHUNK_SIZE = 4;
+      
+      // Fetch all marks concurrently to ensure millisecond-level responsiveness
+      const results = await Promise.all(
+        completedSessions.map(async ([examId, latestSession]) => {
+          try {
+            const result = await resultApi.getSessionResult(String(latestSession.id), controller.signal);
 
-      for (let i = 0; i < Math.min(completedSessions.length, 12); i += CHUNK_SIZE) {
-        const chunk = completedSessions.slice(i, i + CHUNK_SIZE);
-        if (controller.signal.aborted) break;
-
-        const results = await Promise.all(
-          chunk.map(async ([examId, latestSession]) => {
-            try {
-              const result = await resultApi.getSessionResult(String(latestSession.id), controller.signal);
-
-              if (result.totalMaxScore != null && result.totalMaxScore > 0 && result.totalScore != null) {
-                return [examId, `${result.totalScore}/${result.totalMaxScore}`] as [string, string];
-              }
-
-              return [examId, 'N/A'] as [string, string];
-            } catch {
-              return [examId, 'N/A'] as [string, string];
+            if (result.totalMaxScore != null && result.totalMaxScore > 0 && result.totalScore != null) {
+              return [examId, `${result.totalScore}/${result.totalMaxScore}`] as [string, string];
             }
-          }),
-        );
-        marksEntries.push(...results);
-      }
+
+            return [examId, 'N/A'] as [string, string];
+          } catch {
+            return [examId, 'N/A'] as [string, string];
+          }
+        }),
+      );
+      marksEntries.push(...results);
 
       if (!controller.signal.aborted) {
         setMarksByExamId(Object.fromEntries(marksEntries));
@@ -120,7 +122,9 @@ const AvailableExams: React.FC = () => {
       .map((exam) => {
         const id = String(exam.id);
         const attemptsUsed = completedAttemptsByExam[id] || 0;
-        const maxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
+        const baseMaxAttempts = Math.max(1, Number(exam.maxAttempts || 1));
+        const bonusAttempts = additionalAttempts[id] || 0;
+        const maxAttempts = baseMaxAttempts + bonusAttempts;
         const status = normalizeExamStatus(exam.status);
 
         if (status === 'CLOSED') {
@@ -130,7 +134,7 @@ const AvailableExams: React.FC = () => {
             description: exam.description || 'No description provided.',
             publishedAt: exam.publishedAt,
             visibilityMode: String(exam.visibilityMode || 'N/A'),
-            courseName: exam.course?.name?.trim() || 'Unknown Course',
+            courseName: exam.courseName || getCourseName(exam.course, exam.courseId),
             durationMins: getExamTimeLimit(exam),
             maxAttempts,
             actionLabel: 'Closed',
@@ -149,7 +153,7 @@ const AvailableExams: React.FC = () => {
             description: exam.description || 'No description provided.',
             publishedAt: exam.publishedAt,
             visibilityMode: String(exam.visibilityMode || 'N/A'),
-            courseName: exam.course?.name?.trim() || 'Unknown Course',
+            courseName: exam.courseName || getCourseName(exam.course, exam.courseId),
             durationMins: getExamTimeLimit(exam),
             maxAttempts,
             actionLabel: 'Start',
@@ -168,7 +172,7 @@ const AvailableExams: React.FC = () => {
             description: exam.description || 'No description provided.',
             publishedAt: exam.publishedAt,
             visibilityMode: String(exam.visibilityMode || 'N/A'),
-            courseName: exam.course?.name?.trim() || 'Unknown Course',
+            courseName: exam.courseName || getCourseName(exam.course, exam.courseId),
             durationMins: getExamTimeLimit(exam),
             maxAttempts,
             actionLabel: 'Re-attempt',
@@ -186,7 +190,7 @@ const AvailableExams: React.FC = () => {
           description: exam.description || 'No description provided.',
           publishedAt: exam.publishedAt,
           visibilityMode: String(exam.visibilityMode || 'N/A'),
-          courseName: exam.course?.name?.trim() || 'Unknown Course',
+          courseName: exam.courseName || getCourseName(exam.course, exam.courseId),
           durationMins: getExamTimeLimit(exam),
           maxAttempts,
           actionLabel: 'Attempted',
@@ -201,9 +205,9 @@ const AvailableExams: React.FC = () => {
         left.sortRank - right.sortRank
         || left.title.localeCompare(right.title)
       ));
-  }, [exams, marksByExamId, sessions]);
+  }, [exams, marksByExamId, sessions, additionalAttempts]);
 
-  const isLoading = loading || sessionsLoading;
+  const isLoading = loading || sessionsLoading || additionalLoading;
   const pageError = error || sessionsError;
 
   const getActionButtonClass = (state: ExamActionState) => {
@@ -231,11 +235,12 @@ const AvailableExams: React.FC = () => {
   };
 
   const handleExamAction = (exam: ExamCardView) => {
-    if (exam.actionState === 'START') {
+    if (exam.actionState === 'START' || exam.actionState === 'REATTEMPT') {
       setPendingStartExam({
         id: exam.id,
         title: exam.title,
         durationMins: exam.durationMins,
+        actionState: exam.actionState,
       });
       return;
     }
@@ -384,7 +389,7 @@ const AvailableExams: React.FC = () => {
                 ?
               </div>
               <h3 id="start-exam-title" style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>
-                Ready to begin?
+                {pendingStartExam.actionState === 'REATTEMPT' ? 'Ready to re-attempt?' : 'Ready to begin?'}
               </h3>
               <p id="start-exam-description" style={{ margin: 0, fontSize: '15px', color: '#64748b', lineHeight: 1.6 }}>
                 You're about to start <strong>{pendingStartExam.title}</strong>

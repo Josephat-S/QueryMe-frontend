@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { courseApi, userApi, type Course, type CourseEnrollment, type PlatformUser } from '../../api';
+import { courseApi, userApi, type Course, type CourseEnrollment, type Identifier, type PlatformUser } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth, useTheme } from '../../contexts';
 import { useToast } from '../../components/ToastContext';
@@ -40,6 +40,7 @@ interface SingleStudentFormState {
   password: string;
   assignToCourse: boolean;
   classGroupId: string;
+  registrationNumber: string;
 }
 
 const getRecordValue = (record: Record<string, unknown>, keys: string[]): unknown => {
@@ -253,6 +254,7 @@ const CourseEnrollments: React.FC = () => {
     password: '',
     assignToCourse: false,
     classGroupId: '',
+    registrationNumber: '',
   });
   const [bulkRows, setBulkRows] = useState<StudentImportRow[]>([]);
   const [bulkFileName, setBulkFileName] = useState('');
@@ -264,6 +266,7 @@ const CourseEnrollments: React.FC = () => {
   const [registering, setRegistering] = useState(false);
   const [enrollmentSaving, setEnrollmentSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -419,7 +422,7 @@ const CourseEnrollments: React.FC = () => {
     }
   }, [tablePage, totalTablePages]);
 
-  const getCourseLabel = (courseId: string): string => {
+  const getCourseLabel = (courseId: string | Identifier | null | undefined): string => {
     if (!courseId) {
       return 'No direct course assignment';
     }
@@ -523,7 +526,8 @@ const CourseEnrollments: React.FC = () => {
       const payload = buildStudentRegistrationPayload({
         fullName: singleForm.fullName,
         email: singleForm.email,
-        password: singleForm.password,
+        registrationNumber: singleForm.registrationNumber,
+      }, {
         courseId: singleForm.assignToCourse ? selectedCourseId : '',
         classGroupId: singleForm.assignToCourse ? singleForm.classGroupId : '',
       });
@@ -534,7 +538,7 @@ const CourseEnrollments: React.FC = () => {
         ...previous,
         fullName: '',
         email: '',
-        password: '',
+        registrationNumber: '',
       }));
       showToast(
         'success',
@@ -579,15 +583,29 @@ const CourseEnrollments: React.FC = () => {
     }
 
     setBulkSaving(true);
+    setImportProgress(null);
     setImportError(null);
-
+ 
     try {
-      const payloads = validBulkRows.map((row) => buildStudentRegistrationPayload(row, {
-        courseId: currentBulkCourseId || row.courseId,
-        classGroupId: currentBulkCourseId ? bulkClassGroupId || row.classGroupId : row.classGroupId,
-      }));
+      const total = validBulkRows.length;
+      setImportProgress({ current: 0, total });
 
-      const createdStudents = await userApi.registerStudentsBulk(payloads);
+      const payloads = validBulkRows.map((row) => buildStudentRegistrationPayload(row, {
+        courseId: currentBulkCourseId,
+        classGroupId: currentBulkCourseId ? bulkClassGroupId : '',
+      }));
+ 
+      // Register in chunks of 20 to show progress
+      const CHUNK_SIZE = 20;
+      const createdStudents: PlatformUser[] = [];
+
+      for (let index = 0; index < payloads.length; index += CHUNK_SIZE) {
+        const chunk = payloads.slice(index, index + CHUNK_SIZE);
+        const chunkResults = await userApi.registerStudentsBulk(chunk);
+        createdStudents.push(...chunkResults);
+        setImportProgress({ current: Math.min(index + CHUNK_SIZE, total), total });
+      }
+
       await refreshMembershipState();
       setBulkRows([]);
       setBulkFileName('');
@@ -602,6 +620,7 @@ const CourseEnrollments: React.FC = () => {
       setImportError(extractErrorMessage(err, 'Failed to register the uploaded students.'));
     } finally {
       setBulkSaving(false);
+      setImportProgress(null);
     }
   };
 
@@ -729,381 +748,417 @@ const CourseEnrollments: React.FC = () => {
               </select>
             </div>
 
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => void handleEnroll()}
-              disabled={!selectedCourseId || !selectedStudentId || enrollmentSaving}
-              style={{ width: '100%' }}
-            >
-              {enrollmentSaving ? 'Saving...' : 'Enroll Existing Student'}
-            </button>
+            {user?.role === 'ADMIN' && (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void handleEnroll()}
+                disabled={!selectedCourseId || !selectedStudentId || enrollmentSaving}
+                style={{ width: '100%' }}
+              >
+                {enrollmentSaving ? 'Saving...' : 'Enroll Existing Student'}
+              </button>
+            )}
+            {user?.role !== 'ADMIN' && (
+              <div className="course-helper-box" style={{ background: isDarkMode ? '#1e293b' : '#f1f5f9', borderColor: isDarkMode ? '#334155' : '#e2e8f0', color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                Existing student enrollment is restricted to system administrators. Contact an admin to add students to your courses.
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="content-card" style={{ background: isDarkMode ? 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', boxShadow: isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.45)' : '0 12px 30px rgba(15, 23, 42, 0.06)' }}>
-          <div className="content-card-header" style={{ marginBottom: '14px' }}>
-            <div>
-              <h2 style={{ margin: 0 }}>Register One Student</h2>
-              <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b' }}>Create a student account and optionally assign it to the selected course immediately.</p>
+        {user?.role === 'ADMIN' && (
+          <div className="content-card" style={{ background: isDarkMode ? 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', boxShadow: isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.45)' : '0 12px 30px rgba(15, 23, 42, 0.06)' }}>
+            <div className="content-card-header" style={{ marginBottom: '14px' }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Register One Student</h2>
+                <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b' }}>Create a student account and optionally assign it to the selected course immediately.</p>
+              </div>
+            </div>
+            <div className="content-card-body" style={{ paddingTop: 0 }}>
+              <form onSubmit={(event) => void handleRegisterStudent(event)} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  <div className="course-form-field">
+                    <label className="course-form-label" htmlFor="single-student-name">Full Name</label>
+                    <input
+                      id="single-student-name"
+                      className="form-input"
+                      value={singleForm.fullName}
+                      onChange={(event) => setSingleForm((previous) => ({ ...previous, fullName: event.target.value }))}
+                      placeholder="Jane Doe"
+                    />
+                  </div>
+
+                  <div className="course-form-field">
+                    <label className="course-form-label" htmlFor="single-student-email">Email</label>
+                    <input
+                      id="single-student-email"
+                      type="email"
+                      className="form-input"
+                      value={singleForm.email}
+                      onChange={(event) => setSingleForm((previous) => ({ ...previous, email: event.target.value }))}
+                      placeholder="jane@example.com"
+                    />
+                  </div>
+
+                  <div className="course-form-field">
+                    <label className="course-form-label" htmlFor="single-student-reg">Registration Number</label>
+                    <input
+                      id="single-student-reg"
+                      className="form-input"
+                      value={singleForm.registrationNumber}
+                      onChange={(event) => setSingleForm((previous) => ({ ...previous, registrationNumber: event.target.value }))}
+                      placeholder="REG-001"
+                    />
+                  </div>
+
+                  <div className="course-form-field">
+                    <label className="course-form-label" htmlFor="single-student-password">Password</label>
+                    <input
+                      id="single-student-password"
+                      type="password"
+                      className="form-input"
+                      value={singleForm.password}
+                      onChange={(event) => setSingleForm((previous) => ({ ...previous, password: event.target.value }))}
+                      placeholder="Temporary password"
+                    />
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#4a5568' }}>
+                  <input
+                    type="checkbox"
+                    checked={singleForm.assignToCourse}
+                    disabled={!selectedCourseId}
+                    onChange={(event) => setSingleForm((previous) => ({ ...previous, assignToCourse: event.target.checked }))}
+                  />
+                  Assign the new student directly to the selected course
+                </label>
+
+                {singleForm.assignToCourse && selectedCourseId && classGroups.length > 0 && (
+                  <div className="course-form-field">
+                    <label className="course-form-label" htmlFor="single-student-group">Class Group</label>
+                    <select
+                      id="single-student-group"
+                      className="form-input"
+                      value={singleForm.classGroupId}
+                      onChange={(event) => setSingleForm((previous) => ({ ...previous, classGroupId: event.target.value }))}
+                    >
+                      <option value="">No class group</option>
+                      {classGroups.map((group) => (
+                        <option key={String(group.id)} value={String(group.id)}>{group.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" type="submit" disabled={registering}>
+                    {registering ? 'Creating...' : singleForm.assignToCourse && selectedCourse ? 'Create And Assign' : 'Create Student'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    disabled={registering}
+                    onClick={() => setSingleForm((previous) => ({
+                      ...previous,
+                      fullName: '',
+                      email: '',
+                      password: '',
+                      registrationNumber: '',
+                      classGroupId: '',
+                    }))}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-          <div className="content-card-body" style={{ paddingTop: 0 }}>
-            <form onSubmit={(event) => void handleRegisterStudent(event)} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-                <div className="course-form-field">
-                  <label className="course-form-label" htmlFor="single-student-name">Full Name</label>
-                  <input
-                    id="single-student-name"
-                    className="form-input"
-                    value={singleForm.fullName}
-                    onChange={(event) => setSingleForm((previous) => ({ ...previous, fullName: event.target.value }))}
-                    placeholder="Jane Doe"
-                  />
-                </div>
-
-                <div className="course-form-field">
-                  <label className="course-form-label" htmlFor="single-student-email">Email</label>
-                  <input
-                    id="single-student-email"
-                    type="email"
-                    className="form-input"
-                    value={singleForm.email}
-                    onChange={(event) => setSingleForm((previous) => ({ ...previous, email: event.target.value }))}
-                    placeholder="jane@example.com"
-                  />
-                </div>
-
-                <div className="course-form-field">
-                  <label className="course-form-label" htmlFor="single-student-password">Password</label>
-                  <input
-                    id="single-student-password"
-                    type="password"
-                    className="form-input"
-                    value={singleForm.password}
-                    onChange={(event) => setSingleForm((previous) => ({ ...previous, password: event.target.value }))}
-                    placeholder="Temporary password"
-                  />
-                </div>
-              </div>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#4a5568' }}>
-                <input
-                  type="checkbox"
-                  checked={singleForm.assignToCourse}
-                  disabled={!selectedCourseId}
-                  onChange={(event) => setSingleForm((previous) => ({ ...previous, assignToCourse: event.target.checked }))}
-                />
-                Assign the new student directly to the selected course
-              </label>
-
-              {singleForm.assignToCourse && selectedCourseId && classGroups.length > 0 && (
-                <div className="course-form-field">
-                  <label className="course-form-label" htmlFor="single-student-group">Class Group</label>
-                  <select
-                    id="single-student-group"
-                    className="form-input"
-                    value={singleForm.classGroupId}
-                    onChange={(event) => setSingleForm((previous) => ({ ...previous, classGroupId: event.target.value }))}
-                  >
-                    <option value="">No class group</option>
-                    {classGroups.map((group) => (
-                      <option key={String(group.id)} value={String(group.id)}>{group.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button className="btn btn-primary" type="submit" disabled={registering}>
-                  {registering ? 'Creating...' : singleForm.assignToCourse && selectedCourse ? 'Create And Assign' : 'Create Student'}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  type="button"
-                  disabled={registering}
-                  onClick={() => setSingleForm((previous) => ({
-                    ...previous,
-                    fullName: '',
-                    email: '',
-                    password: '',
-                    classGroupId: '',
-                  }))}
-                >
-                  Clear
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className={`content-card students-card ${dragActive ? 'students-drag-active' : ''}`} style={{ marginBottom: '18px', background: isDarkMode ? 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', boxShadow: isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.45)' : '0 12px 30px rgba(15, 23, 42, 0.06)' }}>
-        <div className="content-card-header" style={{ alignItems: 'center', gap: '12px' }}>
-          <div>
-            <h2 className="students-card-title">Bulk Registration</h2>
-            <p className="students-card-sub">CSV, XLSX, and XLS files are supported. PDF import is not automatic yet because roster tables vary too much for reliable parsing.</p>
+      {user?.role === 'ADMIN' && (
+        <div className={`content-card students-card ${dragActive ? 'students-drag-active' : ''}`} style={{ marginBottom: '18px', background: isDarkMode ? 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', boxShadow: isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.45)' : '0 12px 30px rgba(15, 23, 42, 0.06)' }}>
+          {/* ... bulk import content ... */}
+          <div className="content-card-header" style={{ alignItems: 'center', gap: '12px' }}>
+            <div>
+              <h2 className="students-card-title">Bulk Registration</h2>
+              <p className="students-card-sub">CSV, XLSX, and XLS files are supported. PDF import is not automatic yet because roster tables vary too much for reliable parsing.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={downloadTemplate}>
+                Download Template
+              </button>
+              <button className="btn-import-excel" type="button" onClick={() => fileInputRef.current?.click()}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span>Choose File</span>
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button className="btn btn-secondary btn-sm" type="button" onClick={downloadTemplate}>
-              Download Template
-            </button>
-            <button className="btn-import-excel" type="button" onClick={() => fileInputRef.current?.click()}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              <span>Choose File</span>
-            </button>
-          </div>
-        </div>
 
-        <div className="content-card-body" style={{ paddingTop: 0 }}>
-          <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-            <div style={{ display: 'grid', gap: '16px', alignContent: 'start' }}>
-              <div
-                className={`student-dropzone ${dragActive ? 'dragover' : ''}`}
-                role="button"
-                tabIndex={0}
-                aria-label="Upload student roster file"
-                onClick={openBulkFilePicker}
-                onKeyDown={handleDropzoneKeyDown}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragLeave={(event) => {
-                  event.preventDefault();
-                  setDragActive(false);
-                }}
-                onDrop={handleDrop}
-                style={{
-                  borderStyle: 'solid',
-                  borderColor: dragActive ? (isDarkMode ? '#7dd3fc' : '#6366f1') : (isDarkMode ? '#475569' : '#c7d2fe'),
-                  background: dragActive
-                    ? (isDarkMode ? 'linear-gradient(180deg, #14233d 0%, #0f172a 100%)' : 'linear-gradient(180deg, #dde4ff 0%, #ffffff 100%)')
-                    : (isDarkMode ? 'linear-gradient(180deg, #132036 0%, #111827 100%)' : 'linear-gradient(180deg, #e8ecf7 0%, #f8fafc 100%)'),
-                  minHeight: '220px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  boxShadow: dragActive
-                    ? (isDarkMode ? '0 0 0 4px rgba(125,211,252,0.22), 0 24px 50px rgba(2, 6, 23, 0.55)' : '0 0 0 4px rgba(99,102,241,0.18), 0 24px 50px rgba(15, 23, 42, 0.10)')
-                    : (isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.28)' : '0 14px 32px rgba(99, 102, 241, 0.08)'),
-                  transform: dragActive ? 'translateY(-1px)' : 'translateY(0)',
-                  transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease',
-                }}
-              >
-                <div style={{ display: 'grid', gap: '14px', justifyItems: 'center', maxWidth: '540px' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '999px', border: `1px solid ${isDarkMode ? '#334155' : '#c7d2fe'}`, background: isDarkMode ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255,255,255,0.9)', color: isDarkMode ? '#cbd5e1' : '#4f46e5', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                    <span style={{ height: '8px', width: '8px', borderRadius: '999px', background: dragActive ? '#22c55e' : '#6366f1', boxShadow: dragActive ? '0 0 0 4px rgba(34, 197, 94, 0.14)' : '0 0 0 4px rgba(99, 102, 241, 0.12)' }} />
-                    Clickable upload area
-                  </div>
-                  <div className="student-dropzone-icon" style={{ color: dragActive ? '#6366f1' : '#4f46e5', marginBottom: 0, padding: '14px', borderRadius: '24px', background: isDarkMode ? 'rgba(30, 41, 59, 0.92)' : 'rgba(255,255,255,0.9)', border: `1px solid ${isDarkMode ? '#334155' : '#c7d2fe'}`, boxShadow: '0 10px 24px rgba(79, 70, 229, 0.14)' }}>
-                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="student-dropzone-label" style={{ marginBottom: '4px', fontSize: '18px', fontWeight: 800, color: isDarkMode ? '#f8fafc' : '#0f172a' }}>Drop a student roster here</p>
-                    <p className="student-dropzone-hint" style={{ margin: 0, color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: '14px' }}>or click anywhere in this box to browse files</p>
-                    <div style={{ marginTop: '10px', display: 'inline-flex', alignItems: 'center', gap: '8px', borderRadius: '999px', padding: '8px 14px', background: isDarkMode ? '#2563eb' : '#4f46e5', color: '#ffffff', fontSize: '13px', fontWeight: 700, boxShadow: isDarkMode ? '0 12px 24px rgba(37, 99, 235, 0.28)' : '0 12px 24px rgba(79, 70, 229, 0.22)' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M12 5v14" />
-                        <path d="M5 12h14" />
+          <div className="content-card-body" style={{ paddingTop: 0 }}>
+            <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+              <div style={{ display: 'grid', gap: '16px', alignContent: 'start' }}>
+                <div
+                  className={`student-dropzone ${dragActive ? 'dragover' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Upload student roster file"
+                  onClick={openBulkFilePicker}
+                  onKeyDown={handleDropzoneKeyDown}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    setDragActive(false);
+                  }}
+                  onDrop={handleDrop}
+                  style={{
+                    borderStyle: 'solid',
+                    borderColor: dragActive ? (isDarkMode ? '#7dd3fc' : '#6366f1') : (isDarkMode ? '#475569' : '#c7d2fe'),
+                    background: dragActive
+                      ? (isDarkMode ? 'linear-gradient(180deg, #14233d 0%, #0f172a 100%)' : 'linear-gradient(180deg, #dde4ff 0%, #ffffff 100%)')
+                      : (isDarkMode ? 'linear-gradient(180deg, #132036 0%, #111827 100%)' : 'linear-gradient(180deg, #e8ecf7 0%, #f8fafc 100%)'),
+                    minHeight: '220px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    boxShadow: dragActive
+                      ? (isDarkMode ? '0 0 0 4px rgba(125,211,252,0.22), 0 24px 50px rgba(2, 6, 23, 0.55)' : '0 0 0 4px rgba(99,102,241,0.18), 0 24px 50px rgba(15, 23, 42, 0.10)')
+                      : (isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.28)' : '0 14px 32px rgba(99, 102, 241, 0.08)'),
+                    transform: dragActive ? 'translateY(-1px)' : 'translateY(0)',
+                    transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease',
+                  }}
+                >
+                  <div style={{ display: 'grid', gap: '14px', justifyItems: 'center', maxWidth: '540px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '999px', border: `1px solid ${isDarkMode ? '#334155' : '#c7d2fe'}`, background: isDarkMode ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255,255,255,0.9)', color: isDarkMode ? '#cbd5e1' : '#4f46e5', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      <span style={{ height: '8px', width: '8px', borderRadius: '999px', background: dragActive ? '#22c55e' : '#6366f1', boxShadow: dragActive ? '0 0 0 4px rgba(34, 197, 94, 0.14)' : '0 0 0 4px rgba(99, 102, 241, 0.12)' }} />
+                      Clickable upload area
+                    </div>
+                    <div className="student-dropzone-icon" style={{ color: dragActive ? '#6366f1' : '#4f46e5', marginBottom: 0, padding: '14px', borderRadius: '24px', background: isDarkMode ? 'rgba(30, 41, 59, 0.92)' : 'rgba(255,255,255,0.9)', border: `1px solid ${isDarkMode ? '#334155' : '#c7d2fe'}`, boxShadow: '0 10px 24px rgba(79, 70, 229, 0.14)' }}>
+                      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
-                      Click to browse files
                     </div>
+                    <div>
+                      <p className="student-dropzone-label" style={{ marginBottom: '4px', fontSize: '18px', fontWeight: 800, color: isDarkMode ? '#f8fafc' : '#0f172a' }}>Drop a student roster here</p>
+                      <p className="student-dropzone-hint" style={{ margin: 0, color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: '14px' }}>or click anywhere in this box to browse files</p>
+                      <div style={{ marginTop: '10px', display: 'inline-flex', alignItems: 'center', gap: '8px', borderRadius: '999px', padding: '8px 14px', background: isDarkMode ? '#2563eb' : '#4f46e5', color: '#ffffff', fontSize: '13px', fontWeight: 700, boxShadow: isDarkMode ? '0 12px 24px rgba(37, 99, 235, 0.28)' : '0 12px 24px rgba(79, 70, 229, 0.22)' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                        Click to browse files
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                      <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">CSV</span>
+                      <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">XLSX</span>
+                      <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">XLS</span>
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600" style={isDarkMode ? { borderColor: '#334155', background: '#0f172a', color: '#94a3b8' } : undefined}>PDF preview only</span>
+                    </div>
+                    {bulkFileName ? (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        Loaded file: {bulkFileName}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-500" style={isDarkMode ? { borderColor: '#334155', background: 'rgba(15, 23, 42, 0.72)', color: '#94a3b8' } : undefined}>
+                        No file loaded yet. Start with the template or drag a roster file into this area.
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-                    <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">CSV</span>
-                    <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">XLSX</span>
-                    <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">XLS</span>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600" style={isDarkMode ? { borderColor: '#334155', background: '#0f172a', color: '#94a3b8' } : undefined}>PDF preview only</span>
+                </div>
+
+                {importError && <div className="student-alert student-alert-error">{importError}</div>}
+
+                <div style={{ border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '18px', background: isDarkMode ? '#0f172a' : '#ffffff', padding: '16px', display: 'grid', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: isDarkMode ? '#cbd5e1' : '#334155', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={bulkAssignToCourse}
+                        disabled={!selectedCourseId}
+                        onChange={(event) => setBulkAssignToCourse(event.target.checked)}
+                      />
+                      Assign imported students to the selected course
+                    </label>
+                    <span className="badge badge-gray">{bulkAssignToCourse ? 'Auto-assign enabled' : 'Import only'}</span>
                   </div>
-                  {bulkFileName ? (
-                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                      Loaded file: {bulkFileName}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-500" style={isDarkMode ? { borderColor: '#334155', background: 'rgba(15, 23, 42, 0.72)', color: '#94a3b8' } : undefined}>
-                      No file loaded yet. Start with the template or drag a roster file into this area.
-                    </div>
+
+                  {bulkAssignToCourse && selectedCourseId && classGroups.length > 0 && (
+                    <select
+                      className="form-input"
+                      value={bulkClassGroupId}
+                      onChange={(event) => setBulkClassGroupId(event.target.value)}
+                    >
+                      <option value="">No class group for the batch</option>
+                      {classGroups.map((group) => (
+                        <option key={String(group.id)} value={String(group.id)}>{group.name}</option>
+                      ))}
+                    </select>
                   )}
                 </div>
-              </div>
 
-              {importError && <div className="student-alert student-alert-error">{importError}</div>}
-
-              <div style={{ border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '18px', background: isDarkMode ? '#0f172a' : '#ffffff', padding: '16px', display: 'grid', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: isDarkMode ? '#cbd5e1' : '#334155', fontWeight: 600 }}>
-                    <input
-                      type="checkbox"
-                      checked={bulkAssignToCourse}
-                      disabled={!selectedCourseId}
-                      onChange={(event) => setBulkAssignToCourse(event.target.checked)}
-                    />
-                    Assign imported students to the selected course
-                  </label>
-                  <span className="badge badge-gray">{bulkAssignToCourse ? 'Auto-assign enabled' : 'Import only'}</span>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => void handleBulkSubmit()}
+                    disabled={bulkSaving || bulkRows.length === 0}
+                    style={{ width: '100%' }}
+                  >
+                    {bulkSaving ? (
+                      <span>
+                        {importProgress 
+                          ? `Registering ${importProgress.current} of ${importProgress.total}...` 
+                          : 'Registering Students...'}
+                      </span>
+                    ) : (
+                      `Register ${bulkReadyCount} Valid Student${bulkReadyCount === 1 ? '' : 's'}`
+                    )}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    disabled={bulkSaving || bulkRows.length === 0}
+                    onClick={() => {
+                      setBulkRows([]);
+                      setBulkFileName('');
+                      setImportError(null);
+                    }}
+                  >
+                    Clear Batch
+                  </button>
                 </div>
 
-                {bulkAssignToCourse && selectedCourseId && classGroups.length > 0 && (
-                  <select
-                    className="form-input"
-                    value={bulkClassGroupId}
-                    onChange={(event) => setBulkClassGroupId(event.target.value)}
-                  >
-                    <option value="">No class group for the batch</option>
-                    {classGroups.map((group) => (
-                      <option key={String(group.id)} value={String(group.id)}>{group.name}</option>
-                    ))}
-                  </select>
+                {bulkRows.length > 0 && (
+                  <div className="students-table-wrap" style={{ borderRadius: '16px' }}>
+                    <table className="students-table">
+                      <thead>
+                        <tr>
+                          <th>Row</th>
+                          <th>Student</th>
+                          <th>Assignment</th>
+                          <th>Status</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkRows.map((row) => {
+                          const targetCourseId = currentBulkCourseId || row.courseId;
+                          const targetClassGroupId = currentBulkCourseId ? bulkClassGroupId || row.classGroupId : row.classGroupId;
+
+                          return (
+                            <tr key={row.id}>
+                              <td className="students-table-num">{row.rowNumber}</td>
+                              <td>
+                                <div className="students-table-avatar">
+                                  <div className="students-avatar-letter">{row.fullName.trim().charAt(0).toUpperCase() || '?'}</div>
+                                  <div>
+                                    <div className="students-table-name">{row.fullName || 'Missing name'}</div>
+                                    <div className="students-table-email">{row.email || 'Missing email'}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 600, fontSize: '12px', color: isDarkMode ? '#e2e8f0' : '#1f2937' }}>{getCourseLabel(targetCourseId)}</div>
+                                {targetClassGroupId && (
+                                  <div style={{ fontSize: '11px', color: isDarkMode ? '#94a3b8' : '#6b7280', marginTop: '4px' }}>
+                                    {getClassGroupLabel(targetClassGroupId)}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <span className={`badge ${row.errors.length === 0 ? 'badge-green' : 'badge-red'}`}>
+                                  {row.errors.length === 0 ? 'Ready' : row.errors[0]}
+                                </span>
+                              </td>
+                              <td>
+                                <button
+                                  className="students-remove-btn"
+                                  type="button"
+                                  onClick={() => setBulkRows((previous) => previous.filter((candidate) => candidate.id !== row.id))}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button className="btn btn-primary" type="button" onClick={() => void handleBulkSubmit()} disabled={bulkSaving || bulkRows.length === 0}>
-                  {bulkSaving ? 'Registering Batch...' : `Register ${validBulkRows.length || 0} Students`}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  type="button"
-                  disabled={bulkSaving || bulkRows.length === 0}
-                  onClick={() => {
-                    setBulkRows([]);
-                    setBulkFileName('');
-                    setImportError(null);
-                  }}
-                >
-                  Clear Batch
-                </button>
-              </div>
-
-              {bulkRows.length > 0 && (
-                <div className="students-table-wrap" style={{ borderRadius: '16px' }}>
-                  <table className="students-table">
-                    <thead>
-                      <tr>
-                        <th>Row</th>
-                        <th>Student</th>
-                        <th>Assignment</th>
-                        <th>Status</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bulkRows.map((row) => {
-                        const targetCourseId = currentBulkCourseId || row.courseId;
-                        const targetClassGroupId = currentBulkCourseId ? bulkClassGroupId || row.classGroupId : row.classGroupId;
-
-                        return (
-                          <tr key={row.id}>
-                            <td className="students-table-num">{row.rowNumber}</td>
-                            <td>
-                              <div className="students-table-avatar">
-                                <div className="students-avatar-letter">{row.fullName.trim().charAt(0).toUpperCase() || '?'}</div>
-                                <div>
-                                  <div className="students-table-name">{row.fullName || 'Missing name'}</div>
-                                  <div className="students-table-email">{row.email || 'Missing email'}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: 600, fontSize: '12px', color: isDarkMode ? '#e2e8f0' : '#1f2937' }}>{getCourseLabel(targetCourseId)}</div>
-                              {targetClassGroupId && (
-                                <div style={{ fontSize: '11px', color: isDarkMode ? '#94a3b8' : '#6b7280', marginTop: '4px' }}>
-                                  {getClassGroupLabel(targetClassGroupId)}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              <span className={`badge ${row.errors.length === 0 ? 'badge-green' : 'badge-red'}`}>
-                                {row.errors.length === 0 ? 'Ready' : row.errors[0]}
-                              </span>
-                            </td>
-                            <td>
-                              <button
-                                className="students-remove-btn"
-                                type="button"
-                                onClick={() => setBulkRows((previous) => previous.filter((candidate) => candidate.id !== row.id))}
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              <aside style={{ border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '18px', background: isDarkMode ? 'linear-gradient(180deg, #0f172a 0%, #0b1220 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', padding: '18px', display: 'grid', gap: '14px', alignSelf: 'stretch', boxShadow: isDarkMode ? '0 16px 32px rgba(2, 6, 23, 0.45)' : '0 10px 24px rgba(15, 23, 42, 0.04)' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>Bulk Summary</h3>
+                  <p style={{ margin: '6px 0 0', fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b' }}>Review the queue before you submit the batch.</p>
                 </div>
-              )}
-            </div>
 
-            <aside style={{ border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '18px', background: isDarkMode ? 'linear-gradient(180deg, #0f172a 0%, #0b1220 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', padding: '18px', display: 'grid', gap: '14px', alignSelf: 'stretch', boxShadow: isDarkMode ? '0 16px 32px rgba(2, 6, 23, 0.45)' : '0 10px 24px rgba(15, 23, 42, 0.04)' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>Bulk Summary</h3>
-                <p style={{ margin: '6px 0 0', fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b' }}>Review the queue before you submit the batch.</p>
-              </div>
-
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#f8fafc' }}>
-                  <span style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>Ready rows</span>
-                  <strong style={{ fontSize: '16px', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>{bulkReadyCount}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#f8fafc' }}>
-                  <span style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>Invalid rows</span>
-                  <strong style={{ fontSize: '16px', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>{bulkInvalidCount}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#f8fafc' }}>
-                  <span style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>Course-linked rows</span>
-                  <strong style={{ fontSize: '16px', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>{bulkAssignedCount}</strong>
-                </div>
-              </div>
-
-              <div style={{ border: `1px solid ${isDarkMode ? '#1d4ed8' : '#dbeafe'}`, borderRadius: '16px', padding: '14px', background: isDarkMode ? '#0b1f38' : '#eff6ff', color: isDarkMode ? '#bfdbfe' : '#1e3a8a' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tip</div>
-                <p style={{ margin: '6px 0 0', fontSize: '12px', lineHeight: 1.6 }}>
-                  Keep the first rows clean and complete. The preview below shows exactly what will be created before you submit.
-                </p>
-              </div>
-
-              <div style={{ borderTop: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, paddingTop: '14px' }}>
-                <div style={{ marginBottom: '10px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: isDarkMode ? '#94a3b8' : '#64748b' }}>Preview</div>
                 <div style={{ display: 'grid', gap: '10px' }}>
-                  {bulkPreviewRows.length === 0 ? (
-                    <div style={{ fontSize: '12px', color: isDarkMode ? '#64748b' : '#94a3b8' }}>Upload a file to see the first few rows here.</div>
-                  ) : bulkPreviewRows.map((row) => (
-                    <div key={row.id} style={{ border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#fcfcfd' }}>
-                      <div style={{ fontWeight: 700, color: isDarkMode ? '#e2e8f0' : '#1e293b', fontSize: '13px' }}>{row.fullName || 'Missing name'}</div>
-                      <div style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', marginTop: '2px' }}>{row.email || 'Missing email'}</div>
-                      <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '11px', color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                        <span>Row {row.rowNumber}</span>
-                        <span className={`badge ${row.errors.length === 0 ? 'badge-green' : 'badge-red'}`} style={{ padding: '3px 8px' }}>
-                          {row.errors.length === 0 ? 'Ready' : 'Needs attention'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#f8fafc' }}>
+                    <span style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>Ready rows</span>
+                    <strong style={{ fontSize: '16px', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>{bulkReadyCount}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#f8fafc' }}>
+                    <span style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>Invalid rows</span>
+                    <strong style={{ fontSize: '16px', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>{bulkInvalidCount}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#f8fafc' }}>
+                    <span style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>Course-linked rows</span>
+                    <strong style={{ fontSize: '16px', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>{bulkAssignedCount}</strong>
+                  </div>
                 </div>
-              </div>
-            </aside>
+
+                <div style={{ border: `1px solid ${isDarkMode ? '#1d4ed8' : '#dbeafe'}`, borderRadius: '16px', padding: '14px', background: isDarkMode ? '#0b1f38' : '#eff6ff', color: isDarkMode ? '#bfdbfe' : '#1e3a8a' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tip</div>
+                  <p style={{ margin: '6px 0 0', fontSize: '12px', lineHeight: 1.6 }}>
+                    Keep the first rows clean and complete. The preview below shows exactly what will be created before you submit.
+                  </p>
+                </div>
+
+                <div style={{ borderTop: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, paddingTop: '14px' }}>
+                  <div style={{ marginBottom: '10px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: isDarkMode ? '#94a3b8' : '#64748b' }}>Preview</div>
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {bulkPreviewRows.length === 0 ? (
+                      <div style={{ fontSize: '12px', color: isDarkMode ? '#64748b' : '#94a3b8' }}>Upload a file to see the first few rows here.</div>
+                    ) : bulkPreviewRows.map((row) => (
+                      <div key={row.id} style={{ border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '14px', padding: '12px 14px', background: isDarkMode ? '#0b1220' : '#fcfcfd' }}>
+                        <div style={{ fontWeight: 700, color: isDarkMode ? '#e2e8f0' : '#1e293b', fontSize: '13px' }}>{row.fullName || 'Missing name'}</div>
+                        <div style={{ fontSize: '12px', color: isDarkMode ? '#94a3b8' : '#64748b', marginTop: '2px' }}>{row.email || 'Missing email'}</div>
+                        <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '11px', color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                          <span>Row {row.rowNumber}</span>
+                          <span className={`badge ${row.errors.length === 0 ? 'badge-green' : 'badge-red'}`} style={{ padding: '3px 8px' }}>
+                            {row.errors.length === 0 ? 'Ready' : 'Needs attention'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="content-card" style={{ background: isDarkMode ? 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', boxShadow: isDarkMode ? '0 18px 36px rgba(2, 6, 23, 0.45)' : '0 12px 30px rgba(15, 23, 42, 0.06)' }}>
         <div className="content-card-header" style={{ alignItems: 'center', gap: '12px' }}>
@@ -1115,7 +1170,12 @@ const CourseEnrollments: React.FC = () => {
                 : 'Showing enrolled students across all of your courses.'}
             </p>
           </div>
-          <span className="enroll-badge-count">{filteredTableRows.length} total rows</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="enroll-badge-count">{filteredTableRows.length} total rows</span>
+            {user?.role !== 'ADMIN' && (
+              <span className="badge badge-gray" title="You can only view enrollments. Contact an admin to add or remove students.">View Only</span>
+            )}
+          </div>
         </div>
 
         <div className="content-card-body" style={{ paddingTop: 0 }}>
@@ -1184,13 +1244,16 @@ const CourseEnrollments: React.FC = () => {
                         </div>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="enroll-remove-btn"
-                          type="button"
-                          onClick={() => void handleRemove(member)}
-                        >
-                          Remove
-                        </button>
+                        {user?.role === 'ADMIN' && (
+                          <button
+                            className="enroll-remove-btn"
+                            type="button"
+                            onClick={() => void handleRemove(member)}
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {user?.role !== 'ADMIN' && <span style={{ fontSize: '11px', color: '#888' }}>No Actions</span>}
                       </td>
                     </tr>
                   ))}

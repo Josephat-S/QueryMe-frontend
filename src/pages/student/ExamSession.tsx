@@ -1,5 +1,5 @@
 /* eslint-disable react-x/no-array-index-key */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { examApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse, type Session } from '../../api';
 import { InlineSkeleton } from '../../components/PageSkeleton';
@@ -22,24 +22,28 @@ interface SubmissionFeedback {
 }
 
 // ── Isolated Timer Component to prevent full-page re-renders every second ──
-const ExamTimer: React.FC<{ session: Session; onExpire: () => void }> = ({ session, onExpire }) => {
+const ExamTimer: React.FC<{ session: Session; onExpire: () => void; isPaused: boolean }> = ({ session, onExpire, isPaused }) => {
   const [timeLeftMs, setTimeLeftMs] = useState(() => getSessionRemainingMs(session));
 
   useEffect(() => {
     if (!session.expiresAt || isSessionComplete(session)) return undefined;
 
     const interval = window.setInterval(() => {
-      const remaining = getSessionRemainingMs(session);
-      setTimeLeftMs(remaining);
+      if (isPaused) return;
 
-      if (remaining <= 0) {
-        window.clearInterval(interval);
-        onExpire();
-      }
+      setTimeLeftMs((prev) => {
+        const next = prev - 1000;
+        if (next <= 0) {
+          window.clearInterval(interval);
+          onExpire();
+          return 0;
+        }
+        return next;
+      });
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [session, onExpire]);
+  }, [session, onExpire, isPaused]);
 
   const totalSeconds = Math.max(0, Math.floor(timeLeftMs / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -114,7 +118,17 @@ const ExamSession: React.FC = () => {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [isSubmittingOnLeave, setIsSubmittingOnLeave] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  
+  // Lockdown states
+  const [showLockdownModal, setShowLockdownModal] = useState(false);
+  const [isFirstLockdown, setIsFirstLockdown] = useState(true);
+  const [lockdownCountdown, setLockdownCountdown] = useState(15);
+  const [lockdownWarningCount, setLockdownWarningCount] = useState(0);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
   const autoSubmitRef = useRef(false);
+  const heartbeatIntervalRef = useRef<number | null>(null);
 
   // ── Cached hooks: sessions + questions come from cache on repeat visits ──────────
   const { data: studentSessions, loading: sessionsLoading } = useStudentSessions(user?.id);
@@ -164,6 +178,17 @@ const ExamSession: React.FC = () => {
 
         setExam(loadedExam);
         setSession(liveSession);
+
+        // Load persisted drafts from localStorage
+        const persisted = localStorage.getItem(`qm_drafts_${liveSession.id}`);
+        if (persisted) {
+          try {
+            const parsed = JSON.parse(persisted);
+            setDraftAnswers((prev) => ({ ...prev, ...parsed }));
+          } catch (e) {
+            console.error('Failed to parse persisted drafts', e);
+          }
+        }
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(extractErrorMessage(err, 'Failed to load this exam session.'));
@@ -180,6 +205,162 @@ const ExamSession: React.FC = () => {
     return () => controller.abort();
   // sessionsLoading and questionsLoading are intentionally dependencies so we re-run once cached data arrives
   }, [examId, questionsLoading, sessionsLoading, studentSessions, user]);
+
+  // ── Lockdown & Fullscreen Logic ───────────────────────────────────────────
+  const enterFullscreen = async () => {
+    try {
+      if (containerRef.current) {
+        if (containerRef.current.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+        } else if ((containerRef.current as unknown as { webkitRequestFullscreen?: () => Promise<void> }).webkitRequestFullscreen) {
+          await (containerRef.current as unknown as { webkitRequestFullscreen: () => Promise<void> }).webkitRequestFullscreen();
+        }
+        setIsFirstLockdown(false);
+      }
+    } catch (err) {
+      console.error('Fullscreen request failed:', err);
+    }
+  };
+
+  const triggerImmediateSubmission = useCallback(async (reason: string) => {
+    if (autoSubmitRef.current || !session) return;
+    autoSubmitRef.current = true;
+    
+    console.warn(`Lockdown Violation: ${reason}. Submitting exam...`);
+    try {
+      await sessionApi.submitSession(String(session.id));
+      navigate('/student/results', { 
+        state: { 
+          message: `Your exam was automatically submitted because you ${reason}. To maintain integrity, leaving the exam environment is not allowed.` 
+        } 
+      });
+    } catch (err) {
+      console.error('Auto-submission failed:', err);
+      navigate('/student/results');
+    }
+  }, [navigate, session]);
+
+  // ── Separate useEffect for Countdown Timer ───────────────────────────────
+  useEffect(() => {
+    if (!showLockdownModal || isFirstLockdown || autoSubmitRef.current) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setLockdownCountdown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(interval);
+          void triggerImmediateSubmission('failed to return to full-screen mode in time');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [showLockdownModal, isFirstLockdown, triggerImmediateSubmission]);
+
+  useEffect(() => {
+    if (loading || !session || isSessionComplete(session)) return undefined;
+
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = Boolean(document.fullscreenElement);
+      
+      if (!isCurrentlyFullscreen && !autoSubmitRef.current) {
+        setShowLockdownModal(true);
+        if (!isFirstLockdown) {
+          setLockdownCountdown(15);
+          setLockdownWarningCount(prev => prev + 1);
+        }
+      } else {
+        setShowLockdownModal(false);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && !autoSubmitRef.current) {
+        if (!isFirstLockdown) {
+          // If they leave, show a warning modal or confirm when they come back
+          // But the user wants to "ask them if they are sure"
+          const confirmLeave = window.confirm("Warning: Leaving this tab will submit your exam immediately. Do you want to stay?");
+          if (!confirmLeave) {
+            triggerImmediateSubmission('chose to leave the exam tab');
+          }
+        }
+      }
+    };
+
+    const handleBlur = () => {
+      if (autoSubmitRef.current || isFirstLockdown) return;
+
+      setTimeout(() => {
+        if (!document.hasFocus() && !autoSubmitRef.current) {
+          const confirmStay = window.confirm("SECURITY WARNING: Losing focus on the exam window is not allowed. Click 'OK' to stay or 'Cancel' to submit.");
+          if (!confirmStay) {
+            triggerImmediateSubmission('lost focus on the exam window');
+          }
+        }
+      }, 500);
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isSessionComplete(session) && !autoSubmitRef.current) {
+        e.preventDefault();
+        e.returnValue = 'Your exam will be submitted if you leave.';
+        return e.returnValue;
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Initial check
+    let initialCheckTimer: number | undefined;
+    if (!document.fullscreenElement) {
+      initialCheckTimer = window.setTimeout(() => setShowLockdownModal(true), 0);
+    }
+
+    return () => {
+      if (initialCheckTimer) window.clearTimeout(initialCheckTimer);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [loading, session, isFirstLockdown, triggerImmediateSubmission]);
+
+  // Heartbeat and Focus Locking
+  useEffect(() => {
+    if (!session || isSessionComplete(session)) return undefined;
+
+    // Start heartbeat
+    heartbeatIntervalRef.current = window.setInterval(() => {
+      sessionApi.sendHeartbeat(String(session.id)).catch(console.error);
+    }, 60000);
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      if (heartbeatIntervalRef.current) window.clearInterval(heartbeatIntervalRef.current);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [session]);
+
+  // Persist drafts to localStorage
+  useEffect(() => {
+    if (session?.id && Object.keys(draftAnswers).length > 0) {
+      localStorage.setItem(`qm_drafts_${session.id}`, JSON.stringify(draftAnswers));
+    }
+  }, [draftAnswers, session?.id]);
 
   // The 1-second interval has been moved to <ExamTimer />
 
@@ -382,7 +563,7 @@ const ExamSession: React.FC = () => {
   const resultTable = getResultTable(currentFeedback);
 
   return (
-    <div className={EXAM_SESSION_TW}>
+    <div className={EXAM_SESSION_TW} ref={containerRef}>
       <div className="exam-header">
         <div className="exam-header-left">
           <h1 className="exam-title">{exam.title}</h1>
@@ -397,6 +578,7 @@ const ExamSession: React.FC = () => {
           {session && (
             <ExamTimer
               session={session}
+              isPaused={!isOnline}
               onExpire={() => {
                 if (autoSubmitRef.current) return;
                 autoSubmitRef.current = true;
@@ -556,6 +738,72 @@ const ExamSession: React.FC = () => {
               <button className="btn btn-primary" onClick={submitAndLeave} disabled={isSubmittingOnLeave}>
                 {isSubmittingOnLeave ? 'Submitting...' : 'Leave and Submit'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLockdownModal && (
+        <div className="exam-modal-overlay" style={{ zIndex: 10000, backgroundColor: 'rgba(15, 23, 42, 0.98)', backdropFilter: 'blur(8px)' }}>
+          <div className="exam-modal" style={{ maxWidth: '480px', textAlign: 'center', padding: '40px' }}>
+            <div style={{ fontSize: '64px', marginBottom: '24px' }}>{isFirstLockdown ? '📝' : '⏳'}</div>
+            <h3 style={{ fontSize: '24px', marginBottom: '16px', color: '#1e293b' }}>
+              {isFirstLockdown ? 'Exam Instructions' : 'Lockdown Violation'}
+            </h3>
+            <p style={{ color: '#64748b', lineHeight: '1.6', marginBottom: '32px' }}>
+              {isFirstLockdown 
+                ? 'To begin your exam, you must enter secure lockdown mode. This will open the exam in full-screen. Switching tabs or losing focus will result in immediate submission.'
+                : 'You have exited full-screen mode. To maintain exam integrity, you must re-enter lockdown mode immediately.'}
+            </p>
+
+            {!isFirstLockdown && (
+              <div className="mb-8 rounded-lg bg-rose-50 p-4 text-rose-700">
+                <div className="text-3xl font-bold">{lockdownCountdown}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider">Seconds remaining until auto-submit</div>
+              </div>
+            )}
+            
+            <div className="flex flex-col gap-3">
+              <button 
+                className="btn btn-primary w-full py-4 text-sm font-bold tracking-widest" 
+                onClick={enterFullscreen}
+                style={{ height: '56px' }}
+              >
+                {isFirstLockdown ? 'START EXAM IN LOCKDOWN' : 'RE-ENTER LOCKDOWN MODE'}
+              </button>
+              <button 
+                className="btn btn-secondary w-full py-3 text-xs font-semibold text-rose-600 hover:bg-rose-50" 
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to quit? This will submit your exam immediately.')) {
+                    void submitExam();
+                  }
+                }}
+              >
+                QUIT AND SUBMIT EXAM
+              </button>
+            </div>
+            
+            <p className="mt-8 text-xs text-slate-400">
+              {isFirstLockdown 
+                ? 'Your session will be monitored for suspicious activity.'
+                : lockdownWarningCount > 0 ? `Warnings recorded: ${lockdownWarningCount}` : 'Please return to full-screen to continue.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!isOnline && (
+        <div className="exam-modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="exam-modal" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📡</div>
+            <h3>Connection Lost</h3>
+            <p>Your internet connection was lost. The exam timer has been paused.</p>
+            <p style={{ fontWeight: 600, color: '#6a3cb0' }}>Please wait for the connection to be restored to continue your exam.</p>
+            <div style={{ marginTop: '20px' }}>
+              <div className="animate-pulse flex items-center justify-center gap-2 text-slate-500">
+                <div className="h-2 w-2 rounded-full bg-slate-400"></div>
+                <span>Reconnecting...</span>
+              </div>
             </div>
           </div>
         </div>

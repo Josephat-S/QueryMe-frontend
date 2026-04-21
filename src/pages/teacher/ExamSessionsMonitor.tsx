@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { sessionApi, type CourseEnrollment, type PlatformUser, type Session } from '../../api';
+import { sessionApi, examApi, type CourseEnrollment, type PlatformUser, type Session } from '../../api';
 import { InlineSkeleton, PageSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
@@ -35,6 +35,7 @@ type SessionFilter = 'all' | SessionStatus;
 
 interface SessionRow {
   id: string;
+  studentId: string;
   studentName: string;
   studentEmail: string;
   startedAt: string;
@@ -42,6 +43,7 @@ interface SessionRow {
   expiresAt: string;
   hasWorkspace: boolean;
   status: SessionStatus;
+  feedback?: string;
 }
 
 interface StudentProfile { name: string; email: string; }
@@ -170,6 +172,16 @@ const ExamSessionsMonitor: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<SessionFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Feedback Modal State
+  const [feedbackSessionId, setFeedbackSessionId] = useState<string | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+
+  // Grant Attempt Modal State
+  const [grantModalStudent, setGrantModalStudent] = useState<{ id: string; name: string } | null>(null);
+  const [isGrantingAttempt, setIsGrantingAttempt] = useState(false);
 
   const { data: examOptions, loading: loadingExams } = usePublishedExams();
   const { data: students, loading: loadingStudents } = useStudents();
@@ -218,6 +230,7 @@ const ExamSessionsMonitor: React.FC = () => {
       const linkedStudent = getSessionLinkedStudent(session);
       return {
         id: String(session.id),
+        studentId: lookupKey,
         studentName: enrollmentProfile?.name || getStudentName(resolvedStudent) || getStudentName(linkedStudent) || 'Student',
         studentEmail: enrollmentProfile?.email || getStudentEmail(resolvedStudent) || getStudentEmail(linkedStudent) || 'No email',
         startedAt: session.startedAt || '',
@@ -225,6 +238,7 @@ const ExamSessionsMonitor: React.FC = () => {
         expiresAt: session.expiresAt || '',
         hasWorkspace: Boolean(String(session.sandboxSchema || '').trim()),
         status: getSessionStatus(session),
+        feedback: session.feedback,
       };
     })
   ), [sessions, enrollmentProfilesById, studentsById]);
@@ -250,10 +264,8 @@ const ExamSessionsMonitor: React.FC = () => {
     });
   }, [rows, searchQuery, statusFilter]);
 
-  const hasActionableRows = useMemo(() => filteredRows.some((r) => r.status === 'in_progress'), [filteredRows]);
 
   const parentRef = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: filteredRows.length,
     getScrollElement: () => parentRef.current,
@@ -263,12 +275,80 @@ const ExamSessionsMonitor: React.FC = () => {
 
   const forceSubmit = async (sessionId: string) => {
     setError(null);
+    setSuccess(null);
     try {
       await sessionApi.submitSession(sessionId);
-      // Invalidate cached sessions so the list refreshes
       await queryClient.invalidateQueries({ queryKey: ['sessions-by-exam', selectedExamId] });
+      setSuccess('Session forced to submit.');
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to submit that active session.'));
+    }
+  };
+
+  const extendSession = async (sessionId: string) => {
+    setError(null);
+    setSuccess(null);
+    try {
+      await sessionApi.extendSession(sessionId);
+      await queryClient.invalidateQueries({ queryKey: ['sessions-by-exam', selectedExamId] });
+      setSuccess('Session duration extended by 15 minutes.');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to extend the session.'));
+    }
+  };
+
+  const openGrantModal = (studentName: string, studentId: string) => {
+    setGrantModalStudent({ id: studentId, name: studentName });
+    setError(null);
+    setSuccess(null);
+  };
+
+  const closeGrantModal = () => {
+    setGrantModalStudent(null);
+  };
+
+  const handleGrantAttempt = async () => {
+    if (!selectedExamId || !grantModalStudent) return;
+
+    setIsGrantingAttempt(true);
+    setError(null);
+    try {
+      await examApi.grantAdditionalAttempt(selectedExamId, grantModalStudent.id, 1);
+      setSuccess(`Additional attempt granted successfully to ${grantModalStudent.name}.`);
+      await queryClient.invalidateQueries({ queryKey: ['sessions-by-exam', selectedExamId] });
+      closeGrantModal();
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to grant additional attempt.'));
+    } finally {
+      setIsGrantingAttempt(false);
+    }
+  };
+
+  const openFeedbackModal = (sessionId: string, initialFeedback?: string) => {
+    setFeedbackSessionId(sessionId);
+    setFeedbackText(initialFeedback || '');
+    setError(null);
+    setSuccess(null);
+  };
+
+  const closeFeedbackModal = () => {
+    setFeedbackSessionId(null);
+    setFeedbackText('');
+  };
+
+  const saveFeedback = async () => {
+    if (!feedbackSessionId) return;
+    setIsSavingFeedback(true);
+    setError(null);
+    try {
+      await sessionApi.updateFeedback(feedbackSessionId, feedbackText);
+      await queryClient.invalidateQueries({ queryKey: ['sessions-by-exam', selectedExamId] });
+      closeFeedbackModal();
+      setSuccess('Teacher feedback updated.');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to update feedback.'));
+    } finally {
+      setIsSavingFeedback(false);
     }
   };
 
@@ -317,6 +397,7 @@ const ExamSessionsMonitor: React.FC = () => {
         </div>
 
         {error && <div className="enroll-alert enroll-alert-error" style={{ margin: 0 }}>{error}</div>}
+        {success && <div className="enroll-alert enroll-alert-success" style={{ margin: 0, background: '#ecfdf5', color: '#047857', border: '1px solid #10b981' }}>{success}</div>}
 
         <div className="builder-card" style={{ padding: 0, overflow: 'hidden' }}>
           {loadingSessions ? (
@@ -328,79 +409,112 @@ const ExamSessionsMonitor: React.FC = () => {
           ) : (
             <>
               <div className="hidden overflow-x-auto md:block" ref={parentRef} style={{ height: '600px', overflow: 'auto' }}>
-                <table className="sess-table min-w-245 w-full table-fixed">
-                  <thead>
-                    <tr>
-                      <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '25%' }}>Student</th>
-                      <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Status</th>
-                      <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Started</th>
-                      <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Submitted</th>
-                      <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Time Remaining</th>
-                      <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '15%' }}>Workspace</th>
-                      {hasActionableRows && <th style={{ position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', width: '10%' }}>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody style={{ display: 'block', height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                <div role="table" className="sess-table min-w-245 w-full">
+                  <div role="rowgroup" className="sticky top-0 z-10" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <div role="row" className="flex items-center" style={{ minWidth: '960px' }}>
+                      <div role="columnheader" className="px-4 py-3 text-left font-bold text-slate-800" style={{ flex: '0 0 22%' }}>Student</div>
+                      <div role="columnheader" className="px-3 py-3 text-left font-bold text-slate-800" style={{ flex: '0 0 10%' }}>Status</div>
+                      <div role="columnheader" className="px-3 py-3 text-left font-bold text-slate-800" style={{ flex: '0 0 16%' }}>Started</div>
+                      <div role="columnheader" className="px-3 py-3 text-left font-bold text-slate-800" style={{ flex: '0 0 16%' }}>Submitted</div>
+                      <div role="columnheader" className="px-3 py-3 text-left font-bold text-slate-800" style={{ flex: '0 0 12%' }}>Time Remaining</div>
+                      <div role="columnheader" className="px-3 py-3 text-left font-bold text-slate-800" style={{ flex: '0 0 10%' }}>Workspace</div>
+                      <div role="columnheader" className="px-4 py-3 text-right font-bold text-slate-800" style={{ flex: '1 0 14%' }}>Actions</div>
+                    </div>
+                  </div>
+                  <div role="rowgroup" style={{ display: 'block', height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
                     {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                       const row = filteredRows[virtualRow.index];
                       return (
-                        <tr key={row.id} style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)`, display: 'flex' }}>
-                          <td style={{ width: '25%', display: 'flex', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ width: '28px', height: '28px', borderRadius: '999px', background: '#dcfce7', color: '#166534', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>{row.studentName[0] || '?'}</span>
-                              <div style={{ display: 'grid', gap: '2px' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{row.studentName}</div>
-                                <div style={{ fontSize: '12px', color: '#64748b' }}>{row.studentEmail}</div>
+                          <div
+                            role="row"
+                            key={row.id}
+                            className="flex items-center border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              minWidth: '960px',
+                              height: `${virtualRow.size}px`,
+                              transform: `translateY(${virtualRow.start}px)`,
+                            }}
+                          >
+                            <div role="cell" className="px-4 py-2.5 flex items-center overflow-hidden" style={{ flex: '0 0 22%' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f1f5f9', color: '#475569', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, flexShrink: 0, border: '1px solid #e2e8f0' }}>{row.studentName[0] || '?'}</span>
+                                <div style={{ display: 'grid', gap: '1px', minWidth: 0 }}>
+                                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.studentName}</div>
+                                  <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.studentEmail}</div>
+                                </div>
                               </div>
                             </div>
-                          </td>
-                          <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>
-                            <span className={`sess-status-chip ${row.status === 'in_progress' ? 'sess-status-active' : row.status === 'submitted' ? 'sess-status-submitted' : 'sess-status-expired'}`}>{row.status.replace('_', ' ')}</span>
-                          </td>
-                          <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>{row.startedAt ? new Date(row.startedAt).toLocaleString() : 'N/A'}</td>
-                          <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>{row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</td>
-                          <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>
-                            {/* CountdownCell owns its own interval — no parent re-renders */}
-                            {row.status === 'in_progress' && row.expiresAt
-                              ? <CountdownCell expiresAt={row.expiresAt} />
-                              : row.status === 'expired' ? 'Expired' : '—'}
-                          </td>
-                          <td style={{ width: '15%', display: 'flex', alignItems: 'center' }}>
-                            <span className="badge badge-gray">{row.hasWorkspace ? 'Provisioned' : 'Pending'}</span>
-                          </td>
-                          {hasActionableRows && (
-                            <td style={{ width: '10%', display: 'flex', alignItems: 'center' }}>
+                            <div role="cell" className="px-3 py-2.5 flex items-center" style={{ flex: '0 0 10%' }}>
+                              <span className={`sess-status-chip ${row.status === 'in_progress' ? 'sess-status-active' : row.status === 'submitted' ? 'sess-status-submitted' : 'sess-status-expired'}`}>{row.status.replace('_', ' ')}</span>
+                            </div>
+                            <div role="cell" className="px-3 py-2.5 flex items-center text-slate-600 font-medium" style={{ flex: '0 0 16%', fontSize: '12px' }}>{row.startedAt ? new Date(row.startedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}</div>
+                            <div role="cell" className="px-3 py-2.5 flex items-center text-slate-600 font-medium" style={{ flex: '0 0 16%', fontSize: '12px' }}>{row.submittedAt ? new Date(row.submittedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}</div>
+                            <div role="cell" className="px-3 py-2.5 flex items-center" style={{ flex: '0 0 12%' }}>
+                              {row.status === 'in_progress' && row.expiresAt
+                                ? <CountdownCell expiresAt={row.expiresAt} />
+                                : row.status === 'expired' ? <span style={{ color: '#ef4444', fontWeight: 600 }}>Expired</span> : <span style={{ color: '#94a3b8' }}>—</span>}
+                            </div>
+                            <div role="cell" className="px-3 py-2.5 flex items-center" style={{ flex: '0 0 10%' }}>
+                              <span className={`badge ${row.hasWorkspace ? 'badge-green' : 'badge-gray'}`} style={{ fontSize: '10px' }}>{row.hasWorkspace ? 'Ready' : 'Pending'}</span>
+                            </div>
+                            <div role="cell" className="px-4 py-2.5 flex items-center justify-end gap-1.5" style={{ flex: '1 0 14%' }}>
                               {row.status === 'in_progress' && (
-                                <button className="sess-force-btn" onClick={() => void forceSubmit(row.id)}>Force Submit</button>
+                                <>
+                                  <button className="sess-force-btn" style={{ background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }} onClick={() => void extendSession(row.id)} title="Extend session by 15 minutes">Extend</button>
+                                  <button className="sess-force-btn" style={{ background: '#6366f1', color: 'white' }} onClick={() => void forceSubmit(row.id)}>Submit</button>
+                                </>
                               )}
-                            </td>
-                          )}
-                        </tr>
+                              {(row.status === 'submitted' || row.status === 'expired') && (
+                                <button className="sess-force-btn" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }} onClick={() => openGrantModal(row.studentName, row.studentId)} title="Allow student to take the exam again">Grant Attempt</button>
+                              )}
+                              <button className="sess-force-btn" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }} onClick={() => openFeedbackModal(row.id, row.feedback)} title="Write feedback for this student">
+                                {row.feedback ? 'Edit Feedback' : 'Feedback'}
+                              </button>
+                            </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3 p-4 md:hidden">
                 {filteredRows.map((row) => (
                   <div key={`mobile-${row.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-semibold text-slate-800">{row.studentName}</div>
-                        <div className="mt-1 text-xs text-slate-500">{row.studentEmail}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-slate-400" />
+                        <div>
+                          <div className="font-bold text-slate-900">{row.studentName}</div>
+                          <div className="text-xs text-slate-500">{row.studentEmail}</div>
+                        </div>
                       </div>
                       <span className={`sess-status-chip ${row.status === 'in_progress' ? 'sess-status-active' : row.status === 'submitted' ? 'sess-status-submitted' : 'sess-status-expired'}`}>{row.status.replace('_', ' ')}</span>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                      <div><strong>Started:</strong> {row.startedAt ? new Date(row.startedAt).toLocaleString() : 'N/A'}</div>
-                      <div><strong>Submitted:</strong> {row.submittedAt ? new Date(row.submittedAt).toLocaleString() : '—'}</div>
+                    <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-slate-600">
+                      <div><strong>Started:</strong> {row.startedAt ? new Date(row.startedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}</div>
+                      <div><strong>Submitted:</strong> {row.submittedAt ? new Date(row.submittedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}</div>
                       <div><strong>Remaining:</strong>{' '}{row.status === 'in_progress' && row.expiresAt ? <CountdownCell expiresAt={row.expiresAt} /> : row.status === 'expired' ? 'Expired' : '—'}</div>
                       <div><strong>Workspace:</strong> {row.hasWorkspace ? 'Provisioned' : 'Pending'}</div>
                     </div>
-                    {row.status === 'in_progress' && (
-                      <button className="sess-force-btn mt-3 w-full" onClick={() => void forceSubmit(row.id)}>Force Submit</button>
-                    )}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {row.status === 'in_progress' && (
+                        <>
+                          <button className="sess-force-btn flex-1" onClick={() => void extendSession(row.id)}>Extend</button>
+                          <button className="sess-force-btn flex-1" style={{ background: '#6366f1' }} onClick={() => void forceSubmit(row.id)}>Force Submit</button>
+                        </>
+                      )}
+                      {(row.status === 'submitted' || row.status === 'expired') && (
+                        <button className="sess-force-btn flex-1" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }} onClick={() => openGrantModal(row.studentName, row.studentId)}>Grant Attempt</button>
+                      )}
+                      <button className="sess-force-btn flex-1" style={{ background: '#64748b' }} onClick={() => openFeedbackModal(row.id, row.feedback)}>
+                        {row.feedback ? 'Edit Feedback' : 'Feedback'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -408,6 +522,63 @@ const ExamSessionsMonitor: React.FC = () => {
           )}
         </div>
       </div>
+
+      {feedbackSessionId && (
+        <div className="um-modal-overlay" onClick={closeFeedbackModal}>
+          <div className="exam-modal um-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="um-modal-header">
+              <h3>Student Feedback</h3>
+              <p>Provide specific guidance or comments for this student's exam attempt.</p>
+            </div>
+            <div className="um-modal-grid">
+              <div className="um-form-field um-field-wide">
+                <label className="um-form-label">Feedback Notes</label>
+                <textarea
+                  className="form-input"
+                  rows={5}
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder="Enter your feedback here..."
+                  style={{ resize: 'vertical', minHeight: '120px' }}
+                />
+              </div>
+            </div>
+            <div className="um-modal-footer">
+              <button className="btn btn-secondary" onClick={closeFeedbackModal} disabled={isSavingFeedback}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => void saveFeedback()} disabled={isSavingFeedback}>
+                {isSavingFeedback ? 'Saving...' : 'Save Feedback'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {grantModalStudent && (
+        <div className="um-modal-overlay" onClick={closeGrantModal}>
+          <div className="exam-modal um-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="um-modal-header">
+              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', color: '#d97706' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+              </div>
+              <h3>Grant Additional Attempt</h3>
+              <p style={{ marginTop: '8px' }}>
+                Are you sure you want to grant <strong>{grantModalStudent.name}</strong> another attempt for this exam?
+              </p>
+            </div>
+            <div className="um-modal-grid" style={{ marginTop: '4px' }}>
+              <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
+                This action will allow the student to start a fresh session. Their previous results will be preserved in the system.
+              </div>
+            </div>
+            <div className="um-modal-footer">
+              <button className="btn btn-secondary" onClick={closeGrantModal} disabled={isGrantingAttempt}>Nevermind</button>
+              <button className="btn btn-primary" style={{ background: '#d97706', border: 'none' }} onClick={() => void handleGrantAttempt()} disabled={isGrantingAttempt}>
+                {isGrantingAttempt ? 'Granting...' : 'Yes, Grant Attempt'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
