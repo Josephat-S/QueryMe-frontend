@@ -201,7 +201,7 @@ const ExamSession: React.FC = () => {
               } else {
                 throw err;
               }
-            } catch (fallbackErr) {
+            } catch {
               throw err; // throw original start err if fallback fails
             }
           }
