@@ -130,7 +130,7 @@ const AvailableExams: React.FC = () => {
             description: exam.description || 'No description provided.',
             publishedAt: exam.publishedAt,
             visibilityMode: String(exam.visibilityMode || 'N/A'),
-            courseName: exam.course?.name?.trim() || 'Unknown Course',
+            courseName: exam.courseName || 'Unknown Course',
             durationMins: getExamTimeLimit(exam),
             maxAttempts,
             actionLabel: 'Closed',
@@ -149,7 +149,7 @@ const AvailableExams: React.FC = () => {
             description: exam.description || 'No description provided.',
             publishedAt: exam.publishedAt,
             visibilityMode: String(exam.visibilityMode || 'N/A'),
-            courseName: exam.course?.name?.trim() || 'Unknown Course',
+            courseName: exam.courseName || 'Unknown Course',
             durationMins: getExamTimeLimit(exam),
             maxAttempts,
             actionLabel: 'Start',
@@ -168,7 +168,7 @@ const AvailableExams: React.FC = () => {
             description: exam.description || 'No description provided.',
             publishedAt: exam.publishedAt,
             visibilityMode: String(exam.visibilityMode || 'N/A'),
-            courseName: exam.course?.name?.trim() || 'Unknown Course',
+            courseName: exam.courseName || 'Unknown Course',
             durationMins: getExamTimeLimit(exam),
             maxAttempts,
             actionLabel: 'Re-attempt',
@@ -186,7 +186,7 @@ const AvailableExams: React.FC = () => {
           description: exam.description || 'No description provided.',
           publishedAt: exam.publishedAt,
           visibilityMode: String(exam.visibilityMode || 'N/A'),
-          courseName: exam.course?.name?.trim() || 'Unknown Course',
+          courseName: exam.courseName || 'Unknown Course',
           durationMins: getExamTimeLimit(exam),
           maxAttempts,
           actionLabel: 'Attempted',
@@ -296,9 +296,7 @@ const AvailableExams: React.FC = () => {
                 </div>
 
                 <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px', overflowWrap: 'anywhere' }}>{exam.title}</h3>
-                <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px', lineHeight: 1.5 }}>
-                  {exam.description || 'No description provided.'}
-                </p>
+
 
                 <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666', marginBottom: '14px', flexWrap: 'wrap' }}>
                   <span>Course: {exam.courseName}</span>
