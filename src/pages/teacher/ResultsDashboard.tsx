@@ -201,7 +201,7 @@ const ResultsDashboard: React.FC = () => {
         }
         return a.studentName.localeCompare(b.studentName);
       });
-  }, [rows]);
+  }, [rows, selectedExam]);
 
   const filteredRows = useMemo(
     () => studentRows.filter((student) => {
