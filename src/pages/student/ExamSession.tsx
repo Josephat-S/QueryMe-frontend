@@ -661,6 +661,15 @@ const ExamSession: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {exam.description && (
+            <div className="exam-scenario-box">
+              <div className="exam-scenario-title">Exam Scenario</div>
+              <div className="exam-scenario-content">
+                {exam.description}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="exam-workspace">
