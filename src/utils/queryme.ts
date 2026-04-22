@@ -8,6 +8,7 @@ import type {
   Session,
   UserRole,
 } from '../types/queryme';
+import { getServerTime } from '../api/axiosInstance';
 
 export const normalizeId = (value: Identifier | null | undefined): string => String(value ?? '');
 
@@ -165,7 +166,17 @@ export const getSessionRemainingMs = (session?: Partial<Session> | null): number
     return 0;
   }
 
-  return Math.max(0, new Date(session.expiresAt).getTime() - Date.now());
+  // Handle potential missing 'Z' from server dates making them correctly parsed as UTC
+  let expiresAtStr = session.expiresAt;
+  if (!expiresAtStr.endsWith('Z') && !expiresAtStr.includes('+') && !expiresAtStr.includes('-')) {
+    expiresAtStr += 'Z';
+  }
+
+  const expiresTime = new Date(expiresAtStr).getTime();
+  const now = getServerTime();
+  const remaining = expiresTime - now;
+
+  return Math.max(0, remaining);
 };
 
 export const formatDateTime = (value?: string | null): string => {

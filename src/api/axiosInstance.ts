@@ -3,6 +3,10 @@ import { clearAuthState, getStoredToken } from '../utils/authStorage';
 
 const baseURL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
+let serverTimeOffset = 0;
+
+export const getServerTime = (): number => Date.now() + serverTimeOffset;
+
 const axiosInstance = axios.create({
   baseURL,
   timeout: 15000,
@@ -22,7 +26,15 @@ axiosInstance.interceptors.request.use((config) => {
 });
 
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.headers && response.headers['date']) {
+      const serverTime = new Date(response.headers['date']).getTime();
+      if (!Number.isNaN(serverTime)) {
+        serverTimeOffset = serverTime - Date.now();
+      }
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       clearAuthState();
