@@ -81,7 +81,10 @@ const ExamBuilder: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const activeExamId = workingExamId ?? examId ?? null;
-  const readOnly = useMemo(() => Boolean(activeExamId) && examStatus !== 'DRAFT', [activeExamId, examStatus]);
+  const isPublished = examStatus === 'PUBLISHED';
+  const isClosed = examStatus === 'CLOSED';
+  const readOnly = useMemo(() => Boolean(activeExamId) && isClosed, [activeExamId, isClosed]);
+  const contentReadOnly = useMemo(() => Boolean(activeExamId) && (isPublished || isClosed), [activeExamId, isPublished, isClosed]);
   const requestedCourseId = searchParams.get('courseId') || '';
 
   useEffect(() => {
@@ -459,13 +462,13 @@ const ExamBuilder: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => navigate('/teacher/exams')}>Cancel</button>
-          <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || readOnly}>
-            {saving ? saveProgress || 'Saving...' : 'Save Draft'}
+          <button className="btn btn-secondary" onClick={() => void handleSaveDraft()} disabled={saving || isClosed}>
+            {saving ? saveProgress || 'Saving...' : (isPublished ? 'Update Config' : 'Save Draft')}
           </button>
-          <button className="btn btn-secondary" onClick={() => void handleSaveQuestions()} disabled={saving || readOnly || !activeExamId}>
+          <button className="btn btn-secondary" onClick={() => void handleSaveQuestions()} disabled={saving || contentReadOnly || !activeExamId}>
             {saving ? saveProgress || 'Saving...' : 'Save Questions'}
           </button>
-          <button className="btn btn-primary" onClick={() => void handlePublishExam()} disabled={saving || readOnly || !activeExamId}>
+          <button className="btn btn-primary" onClick={() => void handlePublishExam()} disabled={saving || contentReadOnly || !activeExamId}>
             {saving ? saveProgress || 'Publishing...' : 'Publish Exam'}
           </button>
         </div>
@@ -478,17 +481,22 @@ const ExamBuilder: React.FC = () => {
             Step 1: save the exam as a draft. After that, the builder will attach questions to that same draft and publishing will be enabled.
           </div>
         )}
-        {readOnly && (
-          <div style={{ color: '#dd6b20', fontSize: '13px' }}>
-            This exam is no longer in draft status. The backend only allows updates to draft exams, so the form is read-only.
+        {isPublished && (
+          <div style={{ color: '#2563eb', fontSize: '13px', backgroundColor: '#eff6ff', padding: '10px', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
+            <strong>Exam is Published:</strong> You can still update the configuration (description, attempts, time, visibility). However, the Title, Seed SQL, and Questions are locked to ensure result consistency.
+          </div>
+        )}
+        {isClosed && (
+          <div style={{ color: '#dd6b20', fontSize: '13px', backgroundColor: '#fffaf0', padding: '10px', borderRadius: '8px', borderLeft: '4px solid #ed8936' }}>
+            This exam is <strong>CLOSED</strong>. It is now read-only and no further changes can be made.
           </div>
         )}
 
         <div className="builder-card">
           <h2 className="students-card-title">Exam Details</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '16px', marginTop: '16px' }}>
-            <input className="form-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Exam title" disabled={Boolean(readOnly)} />
-            <select className="form-input" value={courseId} onChange={(event) => setCourseId(event.target.value)} disabled={Boolean(readOnly)}>
+            <input className="form-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Exam title" disabled={Boolean(contentReadOnly)} />
+            <select className="form-input" value={courseId} onChange={(event) => setCourseId(event.target.value)} disabled={Boolean(contentReadOnly)}>
               <option value="">Select course</option>
               {courses.map((course) => (
                 <option key={String(course.id)} value={String(course.id)}>{course.name}</option>
@@ -548,7 +556,7 @@ const ExamBuilder: React.FC = () => {
           <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
             The backend uses this SQL to provision the exam dataset and generate answer keys for every question. Multi-statement scripts are allowed, and final INSERT/UPDATE/DELETE statements can omit RETURNING because the backend adds it automatically.
           </p>
-          <textarea className="form-input" value={seedSql} onChange={(event) => setSeedSql(event.target.value)} style={{ width: '100%', minHeight: '220px', marginTop: '14px', fontFamily: 'monospace' }} disabled={Boolean(readOnly)} />
+          <textarea className="form-input" value={seedSql} onChange={(event) => setSeedSql(event.target.value)} style={{ width: '100%', minHeight: '220px', marginTop: '14px', fontFamily: 'monospace' }} disabled={Boolean(contentReadOnly)} />
         </div>
 
         <div className="builder-card">
