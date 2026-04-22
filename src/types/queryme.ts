@@ -177,6 +177,7 @@ export interface Session {
   teacherFeedback?: string;
   totalScore?: number;
   totalMaxScore?: number;
+  _localFetchTime?: number;
   [key: string]: unknown;
 }
 
