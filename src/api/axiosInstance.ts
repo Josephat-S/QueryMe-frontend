@@ -27,10 +27,12 @@ axiosInstance.interceptors.request.use((config) => {
 
 axiosInstance.interceptors.response.use(
   (response) => {
-    if (response.headers && response.headers['date']) {
-      const serverTime = new Date(response.headers['date']).getTime();
+    const dateHeader = response.headers?.['date'] || response.headers?.['Date'];
+    if (dateHeader) {
+      const serverTime = new Date(dateHeader).getTime();
       if (!Number.isNaN(serverTime)) {
         serverTimeOffset = serverTime - Date.now();
+        console.log(`[Clock Sync] Server time synchronized. Offset: ${serverTimeOffset}ms`);
       }
     }
     return response;

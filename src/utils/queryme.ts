@@ -161,17 +161,24 @@ export const isSessionComplete = (session: Partial<Session>): boolean => {
   return Boolean(session.isSubmitted || session.isExpired || session.submittedAt || status === 'submitted' || status === 'timed_out' || status === 'expired');
 };
 
+export const normalizeServerDate = (value?: string | null): string => {
+  if (!value) return '';
+  
+  // Handle potential missing 'Z' from server dates making them correctly parsed as UTC.
+  // We also handle cases where there might be a space before 'Z' or other minor formatting issues.
+  let normalized = value.trim();
+  if (!normalized.endsWith('Z') && !normalized.includes('+') && !normalized.includes('-')) {
+    normalized += 'Z';
+  }
+  return normalized;
+};
+
 export const getSessionRemainingMs = (session?: Partial<Session> | null): number => {
   if (!session?.expiresAt) {
     return 0;
   }
 
-  // Handle potential missing 'Z' from server dates making them correctly parsed as UTC
-  let expiresAtStr = session.expiresAt;
-  if (!expiresAtStr.endsWith('Z') && !expiresAtStr.includes('+') && !expiresAtStr.includes('-')) {
-    expiresAtStr += 'Z';
-  }
-
+  const expiresAtStr = normalizeServerDate(session.expiresAt);
   const expiresTime = new Date(expiresAtStr).getTime();
   const now = getServerTime();
   const remaining = expiresTime - now;
@@ -184,7 +191,8 @@ export const formatDateTime = (value?: string | null): string => {
     return 'N/A';
   }
 
-  const date = new Date(value);
+  const normalized = normalizeServerDate(value);
+  const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
