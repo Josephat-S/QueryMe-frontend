@@ -76,7 +76,7 @@ const ExamsList: React.FC = () => {
         title: exam.title,
         course: exam.course?.name?.trim() || courseNamesById[String(exam.courseId)] || 'Unknown Course',
         status: normalizeExamStatus(exam.status) || 'DRAFT',
-        questionsCount: exam.questions?.length ?? 0,
+        questionsCount: exam.questionsCount ?? exam.questionCount ?? 0,
         maxAttempts: exam.maxAttempts ?? 1,
         visibilityMode: String(exam.visibilityMode || 'N/A'),
       }))
