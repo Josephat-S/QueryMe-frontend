@@ -278,7 +278,6 @@ const ResultsDashboard: React.FC = () => {
     'Total Score': student.totalScore,
     'Max Score': student.totalMaxScore,
     Percentage: `${student.averagePercent}%`,
-    Percentage: `${student.averagePercent}%`,
     Status: student.status,
     'Last Submitted': student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A',
   }));
