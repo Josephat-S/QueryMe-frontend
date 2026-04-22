@@ -115,6 +115,9 @@ export interface Exam {
   timeLimitMins?: number;
   visibilityMode?: VisibilityMode;
   seedSql?: string;
+  questionsCount?: number;
+  questionCount?: number;
+  totalMarks?: number;
   status?: string;
   publishedAt?: string;
   startTime?: string;

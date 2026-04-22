@@ -146,7 +146,7 @@ const ResultsDashboard: React.FC = () => {
           studentName: row.studentName || studentId,
           questionCount: 1,
           totalScore: typeof row.score === 'number' ? row.score : 0,
-          totalMaxScore: typeof row.maxScore === 'number' ? row.maxScore : 0,
+          totalMaxScore: selectedExam?.totalMarks || 0,
           averagePercent: 0,
           correctCount: row.isCorrect ? 1 : 0,
           status: 'Reviewed',
@@ -158,7 +158,6 @@ const ResultsDashboard: React.FC = () => {
 
       existing.questionCount += 1;
       existing.totalScore += typeof row.score === 'number' ? row.score : 0;
-      existing.totalMaxScore += typeof row.maxScore === 'number' ? row.maxScore : 0;
       existing.correctCount += row.isCorrect ? 1 : 0;
       existing.details.push(row);
 
@@ -177,7 +176,7 @@ const ResultsDashboard: React.FC = () => {
           ? Math.round((student.totalScore / student.totalMaxScore) * 100)
           : 0;
 
-        const status: StudentSummaryRow['status'] = student.questionCount > 0 && student.correctCount === student.questionCount
+        const status: StudentSummaryRow['status'] = (selectedExam?.questionsCount || 0) > 0 && student.correctCount === (selectedExam?.questionsCount || 0)
           ? 'Correct'
           : 'Reviewed';
 
@@ -202,7 +201,7 @@ const ResultsDashboard: React.FC = () => {
         }
         return a.studentName.localeCompare(b.studentName);
       });
-  }, [rows]);
+  }, [rows, selectedExam]);
 
   const filteredRows = useMemo(
     () => studentRows.filter((student) => {
@@ -279,7 +278,6 @@ const ResultsDashboard: React.FC = () => {
     'Total Score': student.totalScore,
     'Max Score': student.totalMaxScore,
     Percentage: `${student.averagePercent}%`,
-    Questions: student.questionCount,
     Status: student.status,
     'Last Submitted': student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A',
   }));
@@ -336,7 +334,6 @@ const ResultsDashboard: React.FC = () => {
       row['Total Score'],
       row['Max Score'],
       row.Percentage,
-      row.Questions,
       row.Status,
       row['Last Submitted'],
     ]);
@@ -354,7 +351,6 @@ const ResultsDashboard: React.FC = () => {
         'Total Score',
         'Max Score',
         'Percentage',
-        'Questions',
         'Status',
         'Last Submitted',
       ]],
@@ -507,7 +503,7 @@ const ResultsDashboard: React.FC = () => {
                           </div>
                         </td>
                         <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.totalScore}/{student.totalMaxScore} ({student.averagePercent}%)</td>
-                        <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.questionCount}</td>
+                        <td className="border-t border-slate-100 px-4 py-3 text-slate-700">{student.questionCount}/{selectedExam?.questionsCount || 0}</td>
                         <td className="border-t border-slate-100 px-4 py-3">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${student.status === 'Correct' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                             {student.status}
@@ -542,7 +538,7 @@ const ResultsDashboard: React.FC = () => {
                     <div><strong>Score:</strong> {student.totalScore}/{student.totalMaxScore}</div>
                     <div><strong>Average:</strong> {student.averagePercent}%</div>
                     <div><strong>Status:</strong> {student.status}</div>
-                    <div><strong>Questions:</strong> {student.questionCount}</div>
+                    <div><strong>Questions:</strong> {student.questionCount}/{selectedExam?.questionsCount || 0}</div>
                   </div>
                   <div className="mt-2 text-xs text-slate-500">{student.latestSubmittedAt ? new Date(student.latestSubmittedAt).toLocaleString() : 'N/A'}</div>
                   <button
