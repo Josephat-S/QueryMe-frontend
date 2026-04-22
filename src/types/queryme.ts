@@ -117,6 +117,7 @@ export interface Exam {
   seedSql?: string;
   questionsCount?: number;
   questionCount?: number;
+  totalMarks?: number;
   status?: string;
   publishedAt?: string;
   startTime?: string;
