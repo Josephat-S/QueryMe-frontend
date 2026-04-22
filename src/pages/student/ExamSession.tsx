@@ -181,16 +181,31 @@ const ExamSession: React.FC = () => {
         const existingSession = studentSessions.find(
           (candidate) =>
             String(candidate.examId) === examId &&
-            !isSessionComplete(candidate) &&
-            // Exclude sessions whose time has already elapsed — reusing an expired
-            // session would cause ExamTimer to fire onExpire immediately on mount.
-            (!candidate.expiresAt || getSessionRemainingMs(candidate) > 0),
+            !isSessionComplete(candidate)
         );
 
-        const liveSession = existingSession || await sessionApi.startSession(
-          { examId, studentId: user.id },
-          controller.signal,
-        );
+        let liveSession = existingSession;
+        if (!liveSession) {
+          try {
+            liveSession = await sessionApi.startSession(
+              { examId, studentId: user.id },
+              controller.signal,
+            );
+          } catch (err) {
+            // Race condition fallback: If the backend throws "Already running", fetch directly to pick it up!
+            try {
+              const freshSessions = await sessionApi.getSessionsByStudent(user.id, { page: 1, pageSize: 200, signal: controller.signal });
+              const running = freshSessions.find(s => String(s.examId) === examId && !isSessionComplete(s));
+              if (running) {
+                liveSession = running;
+              } else {
+                throw err;
+              }
+            } catch {
+              throw err; // throw original start err if fallback fails
+            }
+          }
+        }
 
         if (controller.signal.aborted) return;
 
