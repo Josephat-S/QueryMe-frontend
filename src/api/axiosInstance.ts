@@ -7,6 +7,16 @@ let serverTimeOffset = 0;
 
 export const getServerTime = (): number => Date.now() + serverTimeOffset;
 
+export const syncClock = (serverTimeStr: string) => {
+  if (!serverTimeStr) return;
+  const normalized = serverTimeStr.endsWith('Z') || serverTimeStr.includes('+') ? serverTimeStr : `${serverTimeStr}Z`;
+  const serverTime = new Date(normalized).getTime();
+  if (!Number.isNaN(serverTime)) {
+    serverTimeOffset = serverTime - Date.now();
+    console.log(`[Clock Sync] Server time synchronized from body. Offset: ${serverTimeOffset}ms`);
+  }
+};
+
 const axiosInstance = axios.create({
   baseURL,
   timeout: 15000,

@@ -5,6 +5,7 @@ import { examApi, queryApi, sessionApi, type Exam, type QuerySubmissionResponse,
 import { InlineSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../contexts';
 import { extractErrorMessage } from '../../utils/errorUtils';
+import { syncClock } from '../../api/axiosInstance';
 import { getCourseName, getExamTimeLimit, getSessionRemainingMs, isSessionComplete } from '../../utils/queryme';
 import { EXAM_SESSION_TW } from '../../theme/twStyles';
 import { useStudentSessions } from '../../hooks/useStudentSessions';
@@ -211,6 +212,10 @@ const ExamSession: React.FC = () => {
 
         setExam(loadedExam);
         setSession(liveSession);
+
+        if (liveSession.serverTime) {
+          syncClock(liveSession.serverTime);
+        }
 
         // Load persisted drafts from localStorage
         const persisted = localStorage.getItem(`qm_drafts_${liveSession.id}`);
